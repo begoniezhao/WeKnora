@@ -147,9 +147,9 @@ jobs:
             ${{ format('BUILD_TIME_ARG={0}', steps.version.outputs.build_time) }}
             ${{ format('GO_VERSION_ARG={0}', steps.version.outputs.go_version) }}
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/weknora-app:${{ steps.version.outputs.version }}-${{ matrix.platform }}
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/weknora-app:cache-${{ matrix.platform }}
-          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/weknora-app:cache-${{ matrix.platform }},mode=max
+            ${{ secrets.DOCKERHUB_USERNAME }}/weknora-app:${{ steps.version.outputs.version }}-${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/weknora-app:cache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/weknora-app:cache-${{ matrix.arch }},mode=max
 
   manifest:
     needs: build-app
