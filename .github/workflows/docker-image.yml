@@ -161,6 +161,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Prepare version info
         id: version
         run: |
