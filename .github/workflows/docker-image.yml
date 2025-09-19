@@ -108,12 +108,13 @@ jobs:
         run: |
           # 使用统一的版本管理脚本
           eval "$(./scripts/get_version.sh env)"
-          
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "commit_id=$COMMIT_ID" >> $GITHUB_OUTPUT
           echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
           echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
           
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
           # 显示版本信息
           ./scripts/get_version.sh info
       
