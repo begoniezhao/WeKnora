@@ -135,6 +135,7 @@ jobs:
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
 
       - name: Build app Image
+        id: build
         uses: docker/build-push-action@v3
         with:
           push: true
