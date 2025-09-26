@@ -112,6 +112,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(chatpipline.NewPluginFilterTopK))
 	must(container.Invoke(chatpipline.NewPluginPreprocess))
 	must(container.Invoke(chatpipline.NewPluginRewrite))
+	must(container.Invoke(chatpipline.NewPluginExtractEntity))
 
 	// HTTP handlers layer
 	must(container.Provide(handler.NewTenantHandler))

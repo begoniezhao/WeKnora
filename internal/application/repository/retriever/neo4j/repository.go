@@ -40,7 +40,7 @@ func (n *Neo4jRepository) Label(namespace types.NameSpace) string {
 // AddGraph implements interfaces.RetrieveGraphRepository.
 func (n *Neo4jRepository) AddGraph(ctx context.Context, namespace types.NameSpace, graphs []*types.GraphData) error {
 	if n.driver == nil {
-		logger.Errorf(ctx, "NOT SUPPORT RETRIEVE GRAPH")
+		logger.Warnf(ctx, "NOT SUPPORT RETRIEVE GRAPH")
 		return nil
 	}
 	for _, graph := range graphs {
@@ -58,7 +58,21 @@ func (n *Neo4jRepository) addGraph(ctx context.Context, namespace types.NameSpac
 	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
 		node_import_query := `
 			UNWIND $data AS row
-			CALL apoc.merge.node(row.labels, {id: row.id}, row.attributes, {}) YIELD node
+			CALL apoc.merge.node(
+			row.labels,
+			{id: row.id},
+			apoc.map.merge(row.attributes, {chunkids: row.chunkids}),
+			apoc.map.merge(
+				node, 
+				row.attributes,
+				{
+					chunkids: CASE 
+						WHEN exists(node.chunkids) THEN node.chunkids + row.chunkids 
+						ELSE row.chunkids
+					END
+				}
+			)
+			) YIELD node
 			RETURN distinct 'done' AS result
 		`
 		nodeData := []map[string]interface{}{}
@@ -66,6 +80,7 @@ func (n *Neo4jRepository) addGraph(ctx context.Context, namespace types.NameSpac
 			nodeData = append(nodeData, map[string]interface{}{
 				"id":         node.ID,
 				"attributes": node.Attributes,
+				"chunkids":   node.ChunkIDs,
 				"labels":     n.Labels(namespace),
 			})
 		}
@@ -102,7 +117,7 @@ func (n *Neo4jRepository) addGraph(ctx context.Context, namespace types.NameSpac
 // DelGraph implements interfaces.RetrieveGraphRepository.
 func (n *Neo4jRepository) DelGraph(ctx context.Context, namespaces []types.NameSpace) error {
 	if n.driver == nil {
-		logger.Errorf(ctx, "NOT SUPPORT RETRIEVE GRAPH")
+		logger.Warnf(ctx, "NOT SUPPORT RETRIEVE GRAPH")
 		return nil
 	}
 	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
@@ -113,26 +128,26 @@ func (n *Neo4jRepository) DelGraph(ctx context.Context, namespaces []types.NameS
 			labelExpr := n.Label(namespace)
 
 			deleteRelsQuery := `
-            MATCH (n:` + labelExpr + `)-[r]-()
-            CALL apoc.periodic.iterate(
-				"MATCH (n:` + labelExpr + `)-[r]-() RETURN r",
-                "DELETE r",
-                {batchSize: 1000, parallel: true}
-            ) YIELD batches, total
-            RETURN total
-        `
+				MATCH (n:` + labelExpr + `)-[r]-(m:` + labelExpr + `)
+				CALL apoc.periodic.iterate(
+					"MATCH (n:` + labelExpr + `)-[r]-(m:` + labelExpr + `) RETURN r",
+					"DELETE r",
+					{batchSize: 1000, parallel: true}
+				) YIELD batches, total
+				RETURN total
+        	`
 			if _, err := tx.Run(ctx, deleteRelsQuery, nil); err != nil {
 				return nil, fmt.Errorf("failed to delete relationships: %v", err)
 			}
 
 			deleteNodesQuery := `
-            CALL apoc.periodic.iterate(
-				"MATCH (n:` + labelExpr + `) RETURN n",
-                "DELETE n",
-                {batchSize: 1000, parallel: true}
-            ) YIELD batches, total
-            RETURN total
-        `
+				CALL apoc.periodic.iterate(
+					"MATCH (n:` + labelExpr + `) RETURN n",
+					"DELETE n",
+					{batchSize: 1000, parallel: true}
+				) YIELD batches, total
+				RETURN total
+        	`
 			if _, err := tx.Run(ctx, deleteNodesQuery, nil); err != nil {
 				return nil, fmt.Errorf("failed to delete nodes: %v", err)
 			}
@@ -142,6 +157,81 @@ func (n *Neo4jRepository) DelGraph(ctx context.Context, namespaces []types.NameS
 	if err != nil {
 		return err
 	}
-	logger.Infof(ctx, "delete result: %v", result)
+	logger.Infof(ctx, "delete graph result: %v", result)
 	return nil
+}
+
+func (n *Neo4jRepository) SearchNode(ctx context.Context, namespace types.NameSpace, nodes []string) (*types.GraphData, error) {
+	if n.driver == nil {
+		logger.Warnf(ctx, "NOT SUPPORT RETRIEVE GRAPH")
+		return nil, nil
+	}
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		labelExpr := n.Label(namespace)
+		query := `
+			MATCH (n:` + labelExpr + `)-[r]-(m:` + labelExpr + `)
+			WHERE ANY(nodeText IN $nodes WHERE n.id CONTAINS nodeText)
+			RETURN n, r, m
+		`
+		params := map[string]interface{}{"nodes": nodes}
+		result, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return nil, err
+		}
+
+		graphData := &types.GraphData{}
+		nodeSeen := make(map[string]bool)
+		for result.Next(ctx) {
+			record := result.Record()
+			node, _ := record.Get("n")
+			rel, _ := record.Get("r")
+			targetNode, _ := record.Get("m")
+
+			nodeData := node.(neo4j.Node)
+			targetNodeData := targetNode.(neo4j.Node)
+
+			// Convert node to types.Node
+			for _, n := range []neo4j.Node{nodeData, targetNodeData} {
+				idStr := n.Props["id"].(string)
+				if _, ok := nodeSeen[idStr]; !ok {
+					nodeSeen[idStr] = true
+					graphData.Node = append(graphData.Node, &types.GraphNode{
+						ID:         idStr,
+						Attributes: prop2attribute(n.Props),
+					})
+				}
+			}
+
+			// Convert relationship to types.Relation
+			relData := rel.(neo4j.Relationship)
+			graphData.Relation = append(graphData.Relation, &types.GraphRelation{
+				Source: &types.GraphNode{
+					ID:         nodeData.Props["id"].(string),
+					Attributes: prop2attribute(nodeData.Props),
+				},
+				Target: &types.GraphNode{
+					ID:         targetNodeData.Props["id"].(string),
+					Attributes: prop2attribute(targetNodeData.Props),
+				},
+				Type:       relData.Type,
+				Attributes: prop2attribute(relData.Props),
+			})
+		}
+		return graphData, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*types.GraphData), nil
+}
+
+func prop2attribute(prop map[string]any) map[string]string {
+	attributes := make(map[string]string)
+	for k, v := range prop {
+		attributes[k] = fmt.Sprintf("%v", v)
+	}
+	return attributes
 }

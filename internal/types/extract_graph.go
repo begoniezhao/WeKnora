@@ -17,6 +17,7 @@ type PromptTemplateStructured struct {
 
 type GraphNode struct {
 	ID         string            `json:"id,omitempty"`
+	ChunkIDs   []string          `json:"chunk_ids,omitempty"`
 	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
@@ -39,7 +40,14 @@ type NameSpace struct {
 }
 
 func (n NameSpace) Labels() []string {
-	return []string{n.KnowledgeBase, n.Knowledge}
+	res := make([]string, 0)
+	if n.KnowledgeBase != "" {
+		res = append(res, n.KnowledgeBase)
+	}
+	if n.Knowledge != "" {
+		res = append(res, n.Knowledge)
+	}
+	return res
 }
 
 func DefaultTemplate() PromptTemplateStructured {

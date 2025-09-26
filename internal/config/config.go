@@ -22,7 +22,8 @@ type Config struct {
 	VectorDatabase *VectorDatabaseConfig           `yaml:"vector_database" json:"vector_database"`
 	DocReader      *DocReaderConfig                `yaml:"docreader" json:"docreader"`
 	StreamManager  *StreamManagerConfig            `yaml:"stream_manager" json:"stream_manager"`
-	Extraction     *types.PromptTemplateStructured `yaml:"extraction" json:"extraction"`
+	ExtractGraph   *types.PromptTemplateStructured `yaml:"extract_graph" json:"extract_graph"`
+	ExtractEntity  *types.PromptTemplateStructured `yaml:"extract_entity" json:"extract_entity"`
 }
 
 type DocReaderConfig struct {
