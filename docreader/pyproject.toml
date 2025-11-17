@@ -33,5 +33,6 @@ dependencies = [
     "python-docx>=1.2.0",
     "requests>=2.32.5",
     "textract==1.5.0",
+    "trafilatura>=2.0.0",
     "urllib3>=2.5.0",
 ]

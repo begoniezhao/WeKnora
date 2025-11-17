@@ -71,6 +71,7 @@ class BaseParser(ABC):
         max_concurrent_tasks: int = 5,  # Max concurrent tasks
         max_chunks: int = 1000,  # Max number of returned chunks
         chunking_config: Optional[ChunkingConfig] = None,
+        **kwargs,
     ):
         """Initialize parser
 

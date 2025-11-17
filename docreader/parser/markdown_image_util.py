@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class MarkdownImageUtil:
     def __init__(self):
         self.b64_pattern = re.compile(
-            r"!\[([^\]]*)\]\(data:image/(\w+);base64,([^\)]+)\)"
+            r"!\[([^\]]*)\]\(data:image/(\w+)\+?\w*;base64,([^\)]+)\)"
         )
         self.image_pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
         self.replace_pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")

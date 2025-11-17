@@ -1,19 +1,20 @@
 import asyncio
 import logging
 import os
-from typing import Any
 
-from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
+from trafilatura import extract
 
 from docreader.models.document import Document
 from docreader.parser.base_parser import BaseParser
+from docreader.parser.chain_parser import PipelineParser
+from docreader.parser.markdown_parser import MarkdownParser
 from docreader.utils import endecode
 
 logger = logging.getLogger(__name__)
 
 
-class WebParser(BaseParser):
+class StdWebParser(BaseParser):
     """Web page parser"""
 
     def __init__(self, title: str, **kwargs):
@@ -22,7 +23,7 @@ class WebParser(BaseParser):
         super().__init__(file_name=title, **kwargs)
         logger.info(f"Initialized WebParser with title: {title}")
 
-    async def scrape(self, url: str) -> Any:
+    async def scrape(self, url: str) -> str:
         logger.info(f"Starting web page scraping for URL: {url}")
         try:
             async with async_playwright() as p:
@@ -40,9 +41,7 @@ class WebParser(BaseParser):
                 except Exception as e:
                     logger.error(f"Error navigating to URL: {str(e)}")
                     await browser.close()
-                    return BeautifulSoup(
-                        "", "html.parser"
-                    )  # Return empty soup on navigation error
+                    return ""
 
                 logger.info("Retrieving page HTML content")
                 content = await page.content()
@@ -53,14 +52,13 @@ class WebParser(BaseParser):
 
             # Parse HTML content with BeautifulSoup
             logger.info("Parsing HTML with BeautifulSoup")
-            soup = BeautifulSoup(content, "html.parser")
             logger.info("Successfully parsed HTML content")
-            return soup
+            return content
 
         except Exception as e:
             logger.error(f"Failed to scrape web page: {str(e)}")
             # Return empty BeautifulSoup object on error
-            return BeautifulSoup("", "html.parser")
+            return ""
 
     def parse_into_text(self, content: bytes) -> Document:
         """Parse web page
@@ -71,63 +69,36 @@ class WebParser(BaseParser):
         Returns:
             Parse result
         """
-        logger.info("Starting web page parsing")
+        url = endecode.decode_bytes(content)
 
-        # Call async method synchronously
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        logger.info(f"Scraping web page: {url}")
+        chtml = asyncio.run(self.scrape(url))
+        md_text = extract(
+            chtml,
+            output_format="markdown",
+            with_metadata=True,
+            include_images=True,
+            include_tables=True,
+            include_links=True,
+            deduplicate=True,
+        )
+        if not md_text:
+            logger.error("Failed to parse web page")
+            return Document(content=f"Error parsing web page: {url}")
+        return Document(content=md_text)
 
-        try:
-            # Run async method
-            # Handle content possibly being a string
-            if isinstance(content, bytes):
-                url = endecode.decode_bytes(content)
-                logger.info(f"Decoded URL from bytes: {url}")
-            else:
-                url = str(content)
-                logger.info(f"Using content as URL directly: {url}")
 
-            logger.info(f"Scraping web page: {url}")
-            soup = loop.run_until_complete(self.scrape(url))
+class WebParser(PipelineParser):
+    _parser_cls = (StdWebParser, MarkdownParser)
 
-            # Extract page text
-            logger.info("Extracting text from web page")
-            text = soup.get_text("\n")
-            logger.info(f"Extracted {len(text)} characters of text from URL: {url}")
 
-            # Get title, usually in <title> or <h1> tag
-            if self.title != "":
-                title = self.title
-                logger.info(f"Using provided title: {title}")
-            else:
-                title = soup.title.string if soup.title else None
-                logger.info(f"Found title tag: {title}")
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
 
-            if not title:  # If <title> tag does not exist or is empty, try <h1> tag
-                h1_tag = soup.find("h1")
-                if h1_tag:
-                    title = h1_tag.get_text()
-                    logger.info(f"Using h1 tag as title: {title}")
-                else:
-                    title = "Untitled Web Page"
-                    logger.info("No title found, using default")
+    url = "https://cloud.tencent.com/document/product/457/6759"
 
-            logger.info(f"Web page title: {title}")
-            text = "\n".join(
-                (line.strip() for line in text.splitlines() if line.strip())
-            )
-
-            result = title + "\n\n" + text
-            logger.info(
-                f"Web page parsing complete, total content: {len(result)} characters"
-            )
-            return Document(content=result)
-
-        except Exception as e:
-            logger.error(f"Error parsing web page: {str(e)}")
-            return Document(content=f"Error parsing web page: {str(e)}")
-
-        finally:
-            # Close event loop
-            logger.info("Closing event loop")
-            loop.close()
+    parser = WebParser(title="")
+    cc = parser.parse_into_text(url.encode())
+    with open("./tencent.md", "w") as f:
+        f.write(cc.content)
