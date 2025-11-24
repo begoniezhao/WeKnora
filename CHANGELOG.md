@@ -2,6 +2,83 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6] - 2025-11-24
+
+### Document Parser Enhancements
+- NEW: Added CSV, XLSX, XLS file parsing support (spreadsheet processing, tabular data extraction)
+- NEW: Web page parser (dedicated class, optimized web image encoding, improved dependency management)
+
+### Document Processing Improvements
+- NEW: MarkdownTableUtil (reduced whitespace, improved table readability/consistency)
+- NEW: Document model class (structured models for type safety, optimized config/parsing logic)
+- UPGRADED: Docx2Parser (enhanced timeout handling, better image processing, optimized OCR backend)
+
+### Internationalization
+- NEW: English/Russian multi-language support (vue-i18n integration, translated UI/text/errors, multilingual docs for knowledge graph/MCP config)
+
+### Bug Fixes
+- Fixed menu component integration issues
+- Fixed Darwin (macOS) memory check regex error (resolved empty output)
+- Fixed model availability check (unified logic, auto ":latest" tag, prevented duplicate pull calls)
+- Fixed Docker Compose security vulnerability (addressed writable filesystem issue)
+
+### Refactoring & Optimization
+- Refactored parser logging/API checks (simplified exception handling, better error reporting)
+- Refactored chunk processing (removed redundant header handling, updated examples)
+- Refactored module organization (docreader structure, proto/client imports, Docker config, absolute imports)
+
+### Documentation Updates
+- Updated API Key acquisition docs (web registration + account page retrieval)
+- Updated Docker Compose setup guide (comprehensive instructions, config adjustments)
+- Updated multilingual docs (added knowledge graph/MCP config guides, directory structure)
+- Removed deprecated hybrid search API docs
+
+### Code Cleanup
+- Removed redundant Docker build parameters
+- Updated .gitignore rules
+- Optimized import statements/type hints
+- Cleaned redundant logging/comments
+
+### CI/CD Improvements
+- Added new CI/CD trigger branches
+- Added build concurrency control
+- Added disk space cleanup automation
+
+## [0.1.5] - 2025-10-20
+
+### Features & Enhancements
+- Added multi-knowledgebases operation support and management (UI & backend logic)
+- Enhanced tenant information management: New tenant page with user-friendly storage quota and usage rate display (see TenantInfo.vue)
+- Initialization Wizard improvements: Stricter form validation, VLM/OpenAI compatible URL verification, and multimodal file upload preview & validation (see InitializationContent.vue)
+- Backend: API Key automatic generation and update logic (see types.Tenant & tenantService.UpdateTenant)
+
+### UI / UX
+- Restructured settings page and initialization page layouts; optimized button states, loading states, and prompt messages; improved upload/preview experience
+- Enhanced menu component: Multi-knowledgebase switching and pre-upload validation logic (see menu.vue)
+- Hidden/protected sensitive information (e.g., API Keys) and added copy interaction prompts (see TenantInfo.vue)
+
+### Security Fixes
+- Fixed potential frontend XSS vulnerabilities; enhanced input validation and Content Security Policy
+- Hidden API Keys in UI and improved copy behavior prompts to strengthen information leakage protection
+
+### Bug Fixes
+- Resolved OCR/AVX support-related issues and image parsing concurrency errors
+- Fixed frontend routing/login redirection issues and file download content errors
+- Fixed docreader service health check and model prefetching issues
+
+### DevOps / Building
+- Improved image building scripts: Enhanced platform/architecture detection (amd64 / arm64) and injected version information during build (see get_version.sh & build_images.sh)
+- Refined Makefile and build process to facilitate CI injection of LDFLAGS (see Makefile)
+- Improved usage and documentation for scripts and migration tools (migrate) (see migrate.sh)
+
+### Documentation
+- Updated README and multilingual documentation (EN/CN/JA) along with release/CHANGELOG (see CHANGELOG.md & README.md for details)
+- Added MCP server usage instructions and installation guide (see mcp-server/INSTALL.md)
+
+### Developer / Internal API Changes (For Reference)
+- New/updated backend system information response structure: handler.GetSystemInfoResponse
+- Tenant data structure and JSON storage fields: types.Tenant
+
 ## [0.1.4] - 2025-09-17
 
 ### 🚀 Major Features
