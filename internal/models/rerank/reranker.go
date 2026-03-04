@@ -84,6 +84,8 @@ type RerankerConfig struct {
 	Source    types.ModelSource
 	ModelID   string
 	Provider  string // Provider identifier: openai, aliyun, zhipu, siliconflow, jina, generic
+	AppID     string
+	AppSecret string // 加密值，工厂函数调用方传入，使用前已解密
 }
 
 // NewReranker creates a reranker based on the configuration
@@ -103,6 +105,8 @@ func NewReranker(config *RerankerConfig) (Reranker, error) {
 		return NewJinaReranker(config)
 	case provider.ProviderNvidia:
 		return NewNvidiaReranker(config)
+	case provider.ProviderChatBot:
+		return NewChatBotReranker(config)
 	default:
 		return NewOpenAIReranker(config)
 	}

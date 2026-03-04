@@ -24,6 +24,46 @@
       </div>
     </div>
 
+    <!-- ChatBot 厂商配置 -->
+    <div class="chatbot-config-section" style="margin-bottom: 24px;">
+      <div class="category-header" style="margin-bottom: 12px;">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600;">ChatBot 厂商配置</h3>
+      </div>
+      <!-- 凭证失效警告 -->
+      <div v-if="chatBotNeedsReinit" style="margin-bottom: 12px; background: #fff7ed; border: 1px solid #fed7aa; border-left: 3px solid #f97316; border-radius: 6px; padding: 12px 16px; display: flex; align-items: flex-start; gap: 10px;">
+        <t-icon name="error-circle" style="font-size: 16px; color: #f97316; flex-shrink: 0; margin-top: 1px;" />
+        <div style="font-size: 13px; color: #9a3412; line-height: 1.5;">
+          <strong>ChatBot 凭证已失效</strong><br />
+          {{ chatBotReinitReason || '服务重启后加密密钥已变更，已保存的凭证无法解密。' }}请重新填写 APPID 和 APPSECRET 并点击"保存并初始化"以恢复服务。
+        </div>
+      </div>
+      <div class="chatbot-config-card" style="background: var(--td-bg-color-container); border: 1px solid var(--td-component-stroke); border-radius: 8px; padding: 20px;">
+        <div style="display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+          <t-form-item label="APPID" style="margin-bottom: 0;">
+            <t-input v-model="chatBotForm.appId" placeholder="请输入 APPID" style="width: 240px;" />
+          </t-form-item>
+          <t-form-item label="APPSECRET" style="margin-bottom: 0;">
+            <t-input
+              v-model="chatBotForm.appSecret"
+              type="password"
+              placeholder="请输入 APPSECRET"
+              style="width: 240px;"
+            />
+          </t-form-item>
+          <t-button
+            theme="primary"
+            :loading="chatBotLoading"
+            @click="handleChatBotInit"
+          >
+            保存并初始化
+          </t-button>
+        </div>
+        <p style="color: var(--td-text-color-secondary); font-size: 12px; margin-top: 12px; margin-bottom: 0;">
+          提交后将自动创建或更新三个模型（Chat / Embedding / Rerank）并设为各类型默认
+        </p>
+      </div>
+    </div>
+
     <!-- 对话模型 -->
     <div class="model-category-section" data-model-type="chat">
       <div class="category-header">
@@ -237,7 +277,7 @@ import { ref, computed, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 import ModelEditorDialog from '@/components/ModelEditorDialog.vue'
-import { listModels, createModel, updateModel as updateModelAPI, deleteModel as deleteModelAPI, type ModelConfig } from '@/api/model'
+import { listModels, createModel, updateModel as updateModelAPI, deleteModel as deleteModelAPI, initializeChatBot, getChatBotStatus, type ModelConfig } from '@/api/model'
 
 const { t } = useI18n()
 
@@ -245,6 +285,38 @@ const showDialog = ref(false)
 const currentModelType = ref<'chat' | 'embedding' | 'rerank' | 'vllm'>('chat')
 const editingModel = ref<any>(null)
 const loading = ref(true)
+
+// ChatBot 配置
+const chatBotForm = ref({ appId: '', appSecret: '' })
+const chatBotLoading = ref(false)
+const chatBotNeedsReinit = ref(false)
+const chatBotReinitReason = ref('')
+
+const handleChatBotInit = async () => {
+  if (!chatBotForm.value.appId || !chatBotForm.value.appSecret) {
+    MessagePlugin.warning('请填写 APPID 和 APPSECRET')
+    return
+  }
+  chatBotLoading.value = true
+  try {
+    const result = await initializeChatBot({
+      app_id: chatBotForm.value.appId,
+      app_secret: chatBotForm.value.appSecret,
+    })
+    const updatedCount = result.models.filter((m: any) => m.action === 'updated').length
+    const createdCount = result.models.filter((m: any) => m.action === 'created').length
+    MessagePlugin.success(`初始化成功：新建 ${createdCount} 个，更新 ${updatedCount} 个模型`)
+    chatBotForm.value.appId = ''
+    chatBotForm.value.appSecret = ''
+    chatBotNeedsReinit.value = false
+    chatBotReinitReason.value = ''
+    await loadModels()
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || 'ChatBot 初始化失败')
+  } finally {
+    chatBotLoading.value = false
+  }
+}
 
 // 模型列表数据
 const allModels = ref<ModelConfig[]>([])
@@ -329,6 +401,10 @@ const loadModels = async () => {
     // 直接获取所有模型，不分类型
     const models = await listModels()
     allModels.value = models
+    // 检查 ChatBot 凭证状态
+    const status = await getChatBotStatus()
+    chatBotNeedsReinit.value = status.needs_reinit
+    chatBotReinitReason.value = status.reason || ''
   } catch (error: any) {
     console.error('加载模型列表失败:', error)
     MessagePlugin.error(error.message)

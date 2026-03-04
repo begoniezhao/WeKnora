@@ -47,6 +47,8 @@ type Config struct {
 	Dimensions           int               `json:"dimensions"`
 	ModelID              string            `json:"model_id"`
 	Provider             string            `json:"provider"`
+	AppID                string
+	AppSecret            string // 加密值，工厂函数调用方传入，使用前已解密
 }
 
 // NewEmbedder creates an embedder based on the configuration
@@ -133,6 +135,8 @@ func NewEmbedder(config Config, pooler EmbedderPooler, ollamaService *ollama.Oll
 				config.Dimensions,
 				config.ModelID,
 				pooler)
+		case provider.ProviderChatBot:
+			embedder, err = NewChatBotEmbedder(config)
 			return embedder, err
 		default:
 			// Use OpenAI-compatible embedder for other providers

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Tencent/WeKnora/internal/infrastructure/crypto"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/embedding"
@@ -22,15 +23,29 @@ type modelService struct {
 	repo          interfaces.ModelRepository
 	ollamaService *ollama.OllamaService
 	pooler        embedding.EmbedderPooler
+	cryptoSvc     *crypto.CryptoService
 }
 
 // NewModelService creates a new model service instance
-func NewModelService(repo interfaces.ModelRepository, ollamaService *ollama.OllamaService, pooler embedding.EmbedderPooler) interfaces.ModelService {
+func NewModelService(repo interfaces.ModelRepository, ollamaService *ollama.OllamaService, pooler embedding.EmbedderPooler, cryptoSvc *crypto.CryptoService) interfaces.ModelService {
 	return &modelService{
 		repo:          repo,
 		ollamaService: ollamaService,
 		pooler:        pooler,
+		cryptoSvc:     cryptoSvc,
 	}
+}
+
+// decryptAppSecret 解密 AppSecret（如果为空或 cryptoSvc 为空则原样返回）
+func decryptAppSecret(cryptoSvc *crypto.CryptoService, encrypted string) string {
+	if encrypted == "" || cryptoSvc == nil {
+		return encrypted
+	}
+	plain, err := cryptoSvc.DecryptString(encrypted)
+	if err != nil {
+		return ""
+	}
+	return plain
 }
 
 // CreateModel creates a new model in the repository
@@ -256,6 +271,8 @@ func (s *modelService) GetEmbeddingModel(ctx context.Context, modelId string) (e
 		Dimensions:           model.Parameters.EmbeddingParameters.Dimension,
 		TruncatePromptTokens: model.Parameters.EmbeddingParameters.TruncatePromptTokens,
 		Provider:             model.Parameters.Provider,
+		AppID:                model.Parameters.AppID,
+		AppSecret:            decryptAppSecret(s.cryptoSvc, model.Parameters.AppSecret),
 	}, s.pooler, s.ollamaService)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -346,6 +363,9 @@ func (s *modelService) GetRerankModel(ctx context.Context, modelId string) (rera
 		BaseURL:   model.Parameters.BaseURL,
 		ModelName: model.Name,
 		Source:    model.Source,
+		Provider:  model.Parameters.Provider,
+		AppID:     model.Parameters.AppID,
+		AppSecret: decryptAppSecret(s.cryptoSvc, model.Parameters.AppSecret),
 	})
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -394,6 +414,9 @@ func (s *modelService) GetChatModel(ctx context.Context, modelId string) (chat.C
 		BaseURL:   model.Parameters.BaseURL,
 		ModelName: model.Name,
 		Source:    model.Source,
+		Provider:  model.Parameters.Provider,
+		AppID:     model.Parameters.AppID,
+		AppSecret: decryptAppSecret(s.cryptoSvc, model.Parameters.AppSecret),
 	}, s.ollamaService)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{

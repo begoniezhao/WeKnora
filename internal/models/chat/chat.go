@@ -99,6 +99,8 @@ type ChatConfig struct {
 	ModelID   string
 	Provider  string
 	Extra     map[string]any
+	AppID     string
+	AppSecret string // 加密值，由工厂函数调用方传入，在 NewChatBotChat 中使用前已解密
 }
 
 // NewChat 创建聊天实例
@@ -133,6 +135,8 @@ func NewRemoteChat(config *ChatConfig) (Chat, error) {
 	case provider.ProviderDeepSeek:
 		// DeepSeek 不支持 tool_choice
 		return NewDeepSeekChat(config)
+	case provider.ProviderChatBot:
+		return NewChatBotChat(config)
 	case provider.ProviderGeneric:
 		// Generic provider (如 vLLM) 使用 ChatTemplateKwargs
 		return NewGenericChat(config)

@@ -60,6 +60,7 @@ type RouterParams struct {
 	SkillHandler          *handler.SkillHandler
 	OrganizationHandler   *handler.OrganizationHandler
 	IMHandler             *handler.IMHandler
+	ChatBotHandler        *handler.ChatBotHandler
 }
 
 // NewRouter 创建新的路由
@@ -140,6 +141,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterSkillRoutes(v1, params.SkillHandler)
 		RegisterOrganizationRoutes(v1, params.OrganizationHandler)
 		RegisterIMChannelRoutes(v1, params.IMHandler)
+		RegisterChatBotRoutes(v1, params.ChatBotHandler)
 	}
 
 	return r
@@ -728,4 +730,10 @@ func serveFiles(r *gin.Engine) {
 			logger.Warnf(context.Background(), "[Router] /files write response failed: %v", err)
 		}
 	})
+}
+
+// RegisterChatBotRoutes 注册 ChatBot 初始化路由
+func RegisterChatBotRoutes(r *gin.RouterGroup, handler *handler.ChatBotHandler) {
+	r.POST("/models/chatbot/initialize", handler.Initialize)
+	r.GET("/models/chatbot/status", handler.Status)
 }

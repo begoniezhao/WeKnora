@@ -81,6 +81,7 @@ func AllProviders() []ProviderName {
 		ProviderLKEAP,
 		ProviderGPUStack,
 		ProviderNvidia,
+		ProviderChatBot,
 	}
 }
 
