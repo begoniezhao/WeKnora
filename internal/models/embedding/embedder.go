@@ -135,6 +135,7 @@ func NewEmbedder(config Config, pooler EmbedderPooler, ollamaService *ollama.Oll
 				config.Dimensions,
 				config.ModelID,
 				pooler)
+			return embedder, err
 		case provider.ProviderChatBot:
 			embedder, err = NewChatBotEmbedder(config)
 			return embedder, err
