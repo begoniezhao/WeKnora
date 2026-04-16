@@ -97,9 +97,9 @@ func (p *PluginMerge) OnEvent(ctx context.Context,
 	// and ParallelMap for concurrent processing, both of which destroy the score-based
 	// ordering produced by the rerank stage. Re-sort by Score descending so that
 	// knowledge_references reflects the rerank model's ranking.
-	// sort.Slice(mergedChunks, func(i, j int) bool {
-	// 	return mergedChunks[i].Score > mergedChunks[j].Score
-	// })
+	sort.Slice(mergedChunks, func(i, j int) bool {
+		return mergedChunks[i].Score > mergedChunks[j].Score
+	})
 
 	chatManage.MergeResult = mergedChunks
 	return next()

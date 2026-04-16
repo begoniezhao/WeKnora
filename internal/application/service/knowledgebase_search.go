@@ -32,7 +32,7 @@ func (s *knowledgeBaseService) GetQueryEmbedding(ctx context.Context, kbID strin
 		logger.Errorf(ctx, "GetQueryEmbedding: failed to get embedding model %s: %v", kb.EmbeddingModelID, err)
 		return nil, err
 	}
-	// queryText = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: " + queryText
+	queryText = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: " + queryText
 
 	return embeddingModel.Embed(ctx, queryText)
 }
@@ -207,7 +207,8 @@ func (s *knowledgeBaseService) buildRetrievalParams(
 
 			logger.Info(ctx, "Starting to generate query embedding")
 			// queryText := "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: " + params.QueryText
-			queryText := params.QueryText
+			queryText := "Instruct: Given a question, retrieve Wikipedia passages that answer the question\nQuery: " + params.QueryText
+			// queryText = params.QueryText
 			queryEmbedding, err = embeddingModel.Embed(ctx, queryText)
 			if err != nil {
 				logger.Errorf(ctx, "Failed to embed query text, query text: %s, error: %v", params.QueryText, err)
