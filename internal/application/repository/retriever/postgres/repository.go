@@ -379,7 +379,16 @@ func (g *pgRepository) VectorRetrieve(ctx context.Context,
 
 	var embeddingDBList []pgVectorWithScore
 
-	err := g.db.WithContext(ctx).Raw(querySQL, allVars...).Scan(&embeddingDBList).Error
+	// Set hnsw.ef_search to expandedTopK within a transaction so the HNSW
+	// graph explores enough candidates to satisfy the requested LIMIT.
+	// The default ef_search=40 would cap results at 40 regardless of LIMIT.
+	err := g.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if setErr := tx.Exec(fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", expandedTopK)).Error; setErr != nil {
+			logger.GetLogger(ctx).Warnf("[Postgres] Failed to set hnsw.ef_search=%d: %v", expandedTopK, setErr)
+			// Non-fatal: proceed without the setting (results will be limited by ef_search default)
+		}
+		return tx.Raw(querySQL, allVars...).Scan(&embeddingDBList).Error
+	})
 
 	if err == gorm.ErrRecordNotFound {
 		logger.GetLogger(ctx).Warnf("[Postgres] No vector matches found that meet threshold %.4f", params.Threshold)
