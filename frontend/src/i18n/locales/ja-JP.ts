@@ -3527,6 +3527,19 @@ export default {
         viewerClose: '閉じる (Esc)',
         prev: '前へ (←)',
         next: '次へ (→)',
+        sourceFilter: 'ドキュメントで絞り込み',
+        sourceFilterTitle: 'ソースドキュメントで絞り込み',
+        sourceFilterSearch: 'ドキュメント名を検索',
+        sourceFilterEmpty: '一致するドキュメントがありません',
+        sourceFilterSubtitle: '選択したドキュメントの画像のみを表示し、キャプションと OCR 結果を一つずつ確認できます',
+        sourceFilterSelected: '{count} 件のドキュメントを選択中',
+        sourceFilterClear: '選択をクリア',
+        sourceFilterTooMany: '選択できるのは最大 1000 件です',
+        sourceFilterColName: 'ファイル名',
+        sourceFilterColTime: 'アップロード日時',
+        sourceFilterSelectAll: 'すべて選択 / 選択解除（全ヒット対象）',
+        sourceFilterOverflowRecent: 'ドキュメントが多いため、最新 {cap} 件のみ表示しています。キーワードで絞り込んでください',
+        sourceFilterOverflowHits: '{total} 件がヒットしました。先頭 {cap} 件のみ表示中です。全選択前にキーワードを絞り込んでください',
         // Display names for the builtin attributes the gallery itself
         // declares. Attributes contributed by other sources fall back to the
         // pipeline's own wording (see the imageAttr namespace).

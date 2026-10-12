@@ -4558,6 +4558,19 @@ export default {
         viewerClose: 'Закрыть (Esc)',
         prev: 'Назад (←)',
         next: 'Вперёд (→)',
+        sourceFilter: 'По документу',
+        sourceFilterTitle: 'Фильтр по исходному документу',
+        sourceFilterSearch: 'Поиск по названию документа',
+        sourceFilterEmpty: 'Подходящих документов нет',
+        sourceFilterSubtitle: 'Галерея покажет только изображения из выбранных документов, чтобы проверить подписи и OCR по одному',
+        sourceFilterSelected: 'Выбрано документов: {count}',
+        sourceFilterClear: 'Сбросить выбор',
+        sourceFilterTooMany: 'Можно выбрать не более 1000 документов',
+        sourceFilterColName: 'Имя файла',
+        sourceFilterColTime: 'Время загрузки',
+        sourceFilterSelectAll: 'Выбрать все / снять выделение (по всем совпадениям)',
+        sourceFilterOverflowRecent: 'Документов много: показаны только последние {cap}. Уточните запрос ключевым словом',
+        sourceFilterOverflowHits: 'Найдено {total} документов; показаны первые {cap}. Сузьте ключевое слово перед выбором всех',
         // Display names for the builtin attributes the gallery itself
         // declares. Attributes contributed by other sources fall back to the
         // pipeline's own wording (see the imageAttr namespace).

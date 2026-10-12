@@ -4558,6 +4558,19 @@ export default {
         viewerClose: '닫기 (Esc)',
         prev: '이전 (←)',
         next: '다음 (→)',
+        sourceFilter: '문서별 필터',
+        sourceFilterTitle: '원본 문서로 필터',
+        sourceFilterSearch: '문서 이름 검색',
+        sourceFilterEmpty: '일치하는 문서가 없습니다',
+        sourceFilterSubtitle: '선택한 문서의 이미지만 표시하여 캡션과 OCR 결과를 하나씩 확인할 수 있습니다',
+        sourceFilterSelected: '{count}개 문서 선택됨',
+        sourceFilterClear: '선택 지우기',
+        sourceFilterTooMany: '최대 1000개 문서까지 선택할 수 있습니다',
+        sourceFilterColName: '파일 이름',
+        sourceFilterColTime: '업로드 시간',
+        sourceFilterSelectAll: '전체 선택 / 해제 (모든 검색 결과 대상)',
+        sourceFilterOverflowRecent: '문서가 많아 최근 {cap}개만 표시합니다. 키워드로 좁혀 주세요',
+        sourceFilterOverflowHits: '{total}개 문서가 일치했습니다. 처음 {cap}개만 표시 중입니다. 전체 선택 전 키워드를 좁혀 주세요',
         // Display names for the builtin attributes the gallery itself
         // declares. Attributes contributed by other sources fall back to the
         // pipeline's own wording (see the imageAttr namespace).
