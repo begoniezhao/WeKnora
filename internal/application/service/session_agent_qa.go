@@ -268,6 +268,15 @@ func (s *sessionService) AgentQA(
 		engine.SetSteerSink(req.SteerSink)
 	}
 
+	engine.SetInteractive(req.Interactive)
+	if req.Suspendable && s.cfg != nil && s.cfg.Agent.PromptSuspend() {
+		if request, err := json.Marshal(resumableAgentRequest(ctx, req)); err != nil {
+			logger.Warnf(ctx, "Run cannot be suspended, encoding its request failed: %v", err)
+		} else {
+			engine.EnableSuspension(request)
+		}
+	}
+
 	// A compaction that ends on a stored turn is written back onto it, so the
 	// next turn loads the summary instead of summarizing the same history
 	// again. Without multi-turn there is no stored history to end on.
@@ -305,7 +314,13 @@ func (s *sessionService) AgentQA(
 	// Execute agent with streaming (asynchronously)
 	// Events will be emitted to EventBus and handled by the Handler layer
 	logger.Info(ctx, "Executing agent with streaming")
-	if _, err := engine.Execute(ctx, sessionID, req.AssistantMessageID, agentQuery, llmContext, agentImageURLs); err != nil {
+	if req.Resume != nil {
+		_, err = engine.Resume(ctx, sessionID, req.AssistantMessageID, llmContext,
+			req.Resume.Snapshot, req.Resume.Prompt)
+	} else {
+		_, err = engine.Execute(ctx, sessionID, req.AssistantMessageID, agentQuery, llmContext, agentImageURLs)
+	}
+	if err != nil {
 		logger.Errorf(ctx, "Agent execution failed: %v", err)
 		// Emit error event to the EventBus used by this agent
 		eventBus.Emit(ctx, event.Event{
@@ -320,6 +335,30 @@ func (s *sessionService) AgentQA(
 	}
 	// Return empty - events will be handled by Handler via EventBus subscription
 	return nil
+}
+
+// resumableAgentRequest keeps the durable part of req needed to rebuild the
+// run elsewhere. Session, attachments and images are reloaded from storage.
+func resumableAgentRequest(ctx context.Context, req *types.QARequest) types.ResumableAgentRequest {
+	r := types.ResumableAgentRequest{
+		Query:               req.Query,
+		SummaryModelID:      req.SummaryModelID,
+		ReasoningEffort:     req.ReasoningEffort,
+		SharedAgentReadOnly: req.SharedAgentReadOnly,
+		KnowledgeBaseIDs:    req.KnowledgeBaseIDs,
+		KnowledgeIDs:        req.KnowledgeIDs,
+		TagScopes:           req.TagScopes,
+		MCPServiceIDs:       req.MCPServiceIDs,
+		SkillNames:          req.SkillNames,
+		WebSearchEnabled:    req.WebSearchEnabled,
+		QuestionOrigin:      req.QuestionOrigin,
+		UserMessageID:       req.UserMessageID,
+		Language:            types.LanguageFromContextOrDefault(ctx),
+	}
+	if req.CustomAgent != nil {
+		r.AgentID, r.AgentTenantID = req.CustomAgent.ID, req.CustomAgent.TenantID
+	}
+	return r
 }
 
 // buildAgentConfig creates a runtime AgentConfig from the QARequest's custom agent configuration,
