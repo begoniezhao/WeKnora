@@ -304,7 +304,7 @@ func (h *KnowledgeHandler) enqueueKnowledgeListReparse(
 // @Param        enable_multimodel formData  bool    false  "启用多模态处理"
 // @Param        tag_ids       formData  string  false  "分类ID列表，逗号分隔"
 // @Param        process_config    formData  string  false  "处理配置JSON（KnowledgeProcessOverrides）"
-// @Success      200               {object}  map[string]interface{}  "创建的知识"
+// @Success      200               {object}  handler.DataResponse{data=types.Knowledge}  "创建的知识"
 // @Failure      400               {object}  errors.AppError         "请求参数错误"
 // @Failure      409               {object}  map[string]interface{}  "文件重复"
 // @Security     Bearer
@@ -468,7 +468,7 @@ func (h *KnowledgeHandler) CreateKnowledgeFromFile(c *gin.Context) {
 // @Produce      json
 // @Param        id       path      string  true  "知识库ID"
 // @Param        request  body      object{url=string,file_name=string,file_type=string,enable_multimodel=bool,title=string,tag_ids=[]string}  true  "URL请求"
-// @Success      201      {object}  map[string]interface{}  "创建的知识"
+// @Success      201      {object}  handler.DataResponse{data=types.Knowledge}  "创建的知识"
 // @Failure      400      {object}  errors.AppError         "请求参数错误"
 // @Failure      409      {object}  map[string]interface{}  "URL重复"
 // @Security     Bearer
@@ -566,7 +566,7 @@ func (h *KnowledgeHandler) CreateKnowledgeFromURL(c *gin.Context) {
 // @Produce      json
 // @Param        id       path      string                       true  "知识库ID"
 // @Param        request  body      types.ManualKnowledgePayload true  "手工知识内容"
-// @Success      200      {object}  map[string]interface{}       "创建的知识"
+// @Success      200      {object}  handler.DataResponse{data=types.Knowledge}       "创建的知识"
 // @Failure      400      {object}  errors.AppError              "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -624,9 +624,10 @@ func (h *KnowledgeHandler) CreateManualKnowledge(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "知识ID"
-// @Success      200  {object}  map[string]interface{}  "知识详情"
-// @Failure      400  {object}  errors.AppError         "请求参数错误"
-// @Failure      404  {object}  errors.AppError         "知识不存在"
+// @Success      200  {object}  handler.DataResponse{data=types.Knowledge}  "知识详情"
+// @Failure      400  {object}  errors.AppError                             "请求参数错误"
+// @Failure      403  {object}  errors.AppError                             "无权访问所属知识库"
+// @Failure      404  {object}  errors.AppError                             "知识不存在"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/{id} [get]
@@ -671,8 +672,10 @@ func (h *KnowledgeHandler) GetKnowledge(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id        path   string  true   "知识ID"
-// @Param        attempt   query  int     false  "指定尝试号；省略=最新"
-// @Success      200       {object}  map[string]interface{}
+// @Param        attempt   query  int     false  "指定尝试号；省略或非正数=最新"  minimum(1)
+// @Success      200       {object}  handler.DataResponse{data=handler.KnowledgeSpansData}
+// @Failure      403       {object}  errors.AppError  "无权访问所属知识库"
+// @Failure      404       {object}  errors.AppError  "知识不存在"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/{id}/spans [get]
@@ -743,38 +746,65 @@ func (h *KnowledgeHandler) GetKnowledgeSpans(c *gin.Context) {
 	// they're still waiting in the queue.
 	tree, currentStageName, lastErr := buildSpanTree(knowledge.ID, currentAttempt, rows, knowledge.ParseStatus)
 
-	resp := gin.H{
-		"knowledge_id":    knowledge.ID,
-		"attempt":         currentAttempt,
-		"latest_attempt":  latestAttempt,
-		"parse_status":    knowledge.ParseStatus,
-		"current_attempt": currentAttempt,
-		"current_stage":   currentStageName,
-		"trace":           tree,
+	resp := KnowledgeSpansData{
+		KnowledgeID:    knowledge.ID,
+		Attempt:        currentAttempt,
+		LatestAttempt:  latestAttempt,
+		ParseStatus:    knowledge.ParseStatus,
+		CurrentAttempt: currentAttempt,
+		CurrentStage:   currentStageName,
+		Trace:          tree,
 	}
 	if isParseInFlight(knowledge.ParseStatus) {
 		last := spansLastActivity(knowledge.UpdatedAt, rows)
-		resp["last_activity_at"] = last
+		resp.LastActivityAt = &last
 		if time.Since(last) >= stallHintAfter {
-			if verdict := h.stallVerdicts(ctx, []string{knowledge.ID})[knowledge.ID]; verdict != "" {
-				resp["stall_state"] = verdict
-			}
+			resp.StallState = h.stallVerdicts(ctx, []string{knowledge.ID})[knowledge.ID]
 		}
 	}
-	if lastError := knowledgeSpansLastError(
+	resp.LastError = knowledgeSpansLastError(
 		currentAttempt,
 		latestAttempt,
 		knowledge.ParseStatus,
 		knowledge.ErrorMessage,
 		knowledge.UpdatedAt,
 		lastErr,
-	); lastError != nil {
-		resp["last_error"] = lastError
-	}
+	)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    resp,
 	})
+}
+
+// KnowledgeSpansData is the data object of GET /knowledge/{id}/spans.
+type KnowledgeSpansData struct {
+	KnowledgeID string `json:"knowledge_id"`
+	// Attempt is the attempt the trace describes; equals CurrentAttempt.
+	Attempt        int    `json:"attempt"`
+	LatestAttempt  int    `json:"latest_attempt"`
+	ParseStatus    string `json:"parse_status"`
+	CurrentAttempt int    `json:"current_attempt"`
+	// CurrentStage is the stage running now, or the last one that ran.
+	CurrentStage string              `json:"current_stage"`
+	Trace        *types.SpanTreeNode `json:"trace"`
+	// LastActivityAt is set while the parse is in flight.
+	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
+	// StallState is types.StallStateQueued or types.StallStateStalled when an
+	// in-flight parse has gone quiet.
+	StallState string              `json:"stall_state,omitempty"`
+	LastError  *KnowledgeSpanError `json:"last_error,omitempty"`
+}
+
+// KnowledgeSpanError is the failure of a parse attempt. Name, ErrorCode and
+// ErrorMessage repeat Stage, Code and Message for older clients.
+type KnowledgeSpanError struct {
+	Stage        string     `json:"stage"`
+	Code         string     `json:"code"`
+	Message      string     `json:"message"`
+	Name         string     `json:"name"`
+	ErrorCode    string     `json:"error_code"`
+	ErrorMessage string     `json:"error_message"`
+	FinishedAt   *time.Time `json:"finished_at"`
 }
 
 // knowledgeSpansLastError builds the last_error payload for GetKnowledgeSpans.
@@ -785,16 +815,16 @@ func knowledgeSpansLastError(
 	parseStatus, knowledgeErrorMessage string,
 	knowledgeUpdatedAt time.Time,
 	spanFailure *types.KnowledgeProcessingSpan,
-) gin.H {
+) *KnowledgeSpanError {
 	if spanFailure != nil {
-		return gin.H{
-			"stage":         spanFailure.Name,
-			"code":          spanFailure.ErrorCode,
-			"message":       spanFailure.ErrorMessage,
-			"name":          spanFailure.Name,
-			"error_code":    spanFailure.ErrorCode,
-			"error_message": spanFailure.ErrorMessage,
-			"finished_at":   spanFailure.FinishedAt,
+		return &KnowledgeSpanError{
+			Stage:        spanFailure.Name,
+			Code:         spanFailure.ErrorCode,
+			Message:      spanFailure.ErrorMessage,
+			Name:         spanFailure.Name,
+			ErrorCode:    spanFailure.ErrorCode,
+			ErrorMessage: spanFailure.ErrorMessage,
+			FinishedAt:   spanFailure.FinishedAt,
 		}
 	}
 	if currentAttempt != latestAttempt || parseStatus != types.ParseStatusFailed || knowledgeErrorMessage == "" {
@@ -805,14 +835,14 @@ func knowledgeSpansLastError(
 		"Task interrupted due to application restart") {
 		errorCode = "SERVER_RESTART"
 	}
-	return gin.H{
-		"stage":         "knowledge_processing",
-		"code":          errorCode,
-		"message":       knowledgeErrorMessage,
-		"name":          "knowledge_processing",
-		"error_code":    errorCode,
-		"error_message": knowledgeErrorMessage,
-		"finished_at":   knowledgeUpdatedAt,
+	return &KnowledgeSpanError{
+		Stage:        "knowledge_processing",
+		Code:         errorCode,
+		Message:      knowledgeErrorMessage,
+		Name:         "knowledge_processing",
+		ErrorCode:    errorCode,
+		ErrorMessage: knowledgeErrorMessage,
+		FinishedAt:   &knowledgeUpdatedAt,
 	}
 }
 
@@ -1004,22 +1034,24 @@ func buildSpanTree(knowledgeID string, attempt int, rows []types.KnowledgeProces
 // @Tags         知识管理
 // @Accept       json
 // @Produce      json
+// @Description  不传 parse_status 时不返回删除中（deleting）的文档。
 // @Param        id         path      string  true   "知识库ID"
-// @Param        page       query     int     false  "页码"
-// @Param        page_size  query     int     false  "每页数量"
+// @Param        page       query     int     false  "页码"  minimum(1)  default(1)
+// @Param        page_size  query     int     false  "每页数量"  minimum(1)  maximum(1000)  default(20)
 // @Param        tag_ids       query     string  false  "标签ID筛选，逗号分隔（OR语义）"
 // @Param        keyword       query     string  false  "关键词搜索"
 // @Param        file_type     query     string  false  "文件类型筛选"
-// @Param        parse_status  query     string  false  "解析状态筛选 (pending/processing/completed/failed)"
+// @Param parse_status query string false "状态" Enums(pending,processing,finalizing,completed,failed,cancelled,deleting)
 // @Param        source        query     string  false  "来源/渠道筛选 (web/api/feishu/notion/yuque/wechat/...，或 manual/url 按 type 过滤)"
 // @Param        start_time    query     string  false  "更新时间起点，RFC3339 格式"
 // @Param        end_time      query     string  false  "更新时间终点，RFC3339 格式"
 // @Param        folder_path      query     string  false  "文件夹路径筛选，空字符串表示知识库根目录；不传该参数则不按文件夹过滤"
 // @Param        folder_recursive query     bool    false  "为 true 时同时返回子文件夹内的文档"
-// @Param        sort_by      query     string  false  "排序字段: updated_at/created_at/file_name，默认 created_at"
-// @Param        sort_order   query     string  false  "排序方向: asc/desc，默认 desc"
-// @Success      200        {object}  map[string]interface{}  "知识列表"
-// @Failure      400        {object}  errors.AppError         "请求参数错误"
+// @Param        sort_by      query     string  false  "排序字段" Enums(created_at,updated_at,file_name) default(created_at)
+// @Param        sort_order   query     string  false  "排序方向"  Enums(asc, desc)  default(desc)
+// @Success      200        {object}  handler.PageResponse{data=[]types.Knowledge}  "知识列表"
+// @Failure      400        {object}  errors.AppError                               "请求参数错误"
+// @Failure      403        {object}  errors.AppError                               "无权访问知识库"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge-bases/{id}/knowledge [get]
@@ -1157,7 +1189,7 @@ func (h *KnowledgeHandler) ListKnowledge(c *gin.Context) {
 // @Param        knowledge_ids query  string  false "来源文档 ID 列表（逗号分隔，最多 50 个），仅返回这些文档的图片"
 // @Param        attr_filters query    string  false "属性筛选 JSON，同一属性多值 OR、属性间 AND"
 // @Param        attr_rules  query     string  false "属性逐值裁决 JSON（off 隐藏 / on 强制显示，on 优先）"
-// @Success      200  {object}  map[string]interface{}  "图片资产分页列表"
+// @Success      200  {object}  handler.PageResponse{data=[]types.ImageAsset}  "图片资产分页列表"
 // @Failure      400  {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -1334,7 +1366,7 @@ type imageListRequestBody struct {
 // @Produce      json
 // @Param        id    path      string              true  "知识库 ID"
 // @Param        body  body      imageListRequestBody false "筛选参数（与 GET /images 同名参数同义）"
-// @Success      200  {object}  map[string]interface{}  "图片资产分页列表"
+// @Success      200  {object}  handler.PageResponse{data=[]types.ImageAsset}  "图片资产分页列表"
 // @Failure      400  {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -1495,7 +1527,7 @@ func (h *KnowledgeHandler) GetGalleryConfig(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "知识库ID"
-// @Success      200  {object}  map[string]interface{}  "目录树"
+// @Success      200  {object}  handler.DataResponse{data=types.KnowledgeFolderTree}  "目录树"
 // @Failure      400  {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -1544,7 +1576,7 @@ type MoveKnowledgeToFolderRequest struct {
 // @Accept       json
 // @Produce      json
 // @Param        request  body      MoveKnowledgeToFolderRequest  true  "移动请求"
-// @Success      200      {object}  map[string]interface{}        "移动成功"
+// @Success      200      {object}  handler.DataResponse{data=handler.FolderMoveData}  "移动成功"
 // @Failure      400      {object}  errors.AppError               "请求参数错误"
 // @Failure      403      {object}  errors.AppError               "权限不足"
 // @Security     Bearer
@@ -1619,7 +1651,7 @@ type RenameKnowledgeFolderRequest struct {
 // @Produce      json
 // @Param        id       path      string                        true  "知识库ID"
 // @Param        request  body      RenameKnowledgeFolderRequest  true  "重命名请求"
-// @Success      200      {object}  map[string]interface{}        "重命名成功"
+// @Success      200      {object}  handler.DataResponse{data=handler.FolderMoveData}  "重命名成功"
 // @Failure      400      {object}  errors.AppError               "请求参数错误"
 // @Failure      403      {object}  errors.AppError               "权限不足"
 // @Security     Bearer
@@ -1741,8 +1773,10 @@ func (h *KnowledgeHandler) requireKnowledgeInKB(
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "知识ID"
-// @Success      200  {object}  map[string]interface{}  "任务已提交，返回 task_id"
-// @Failure      400  {object}  errors.AppError         "请求参数错误"
+// @Success      200  {object}  handler.DataMessageResponse{data=handler.TaskIDData}  "任务已提交"
+// @Failure      400  {object}  errors.AppError  "请求参数错误或知识正在移动"
+// @Failure      403  {object}  errors.AppError  "需要编辑权限"
+// @Failure      404  {object}  errors.AppError  "知识不存在"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/{id} [delete]
@@ -1810,7 +1844,7 @@ type BatchDeleteKnowledgeRequest struct {
 // @Accept       json
 // @Produce      json
 // @Param        request  body      BatchDeleteKnowledgeRequest  true  "批量删除请求"
-// @Success      200      {object}  map[string]interface{}       "删除成功"
+// @Success      200      {object}  handler.SubmittedTaskResponse  "删除成功"
 // @Failure      400      {object}  errors.AppError              "请求参数错误"
 // @Failure      403      {object}  errors.AppError              "权限不足"
 // @Security     Bearer
@@ -1904,7 +1938,7 @@ func (h *KnowledgeHandler) BatchDeleteKnowledge(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "知识库ID"
-// @Success      200  {object}  map[string]interface{}  "清空任务已提交"
+// @Success      200  {object}  handler.SubmittedTaskResponse  "清空任务已提交"
 // @Failure      400  {object}  errors.AppError         "请求参数错误"
 // @Failure      403  {object}  errors.AppError         "权限不足"
 // @Security     Bearer
@@ -2079,7 +2113,7 @@ type GetKnowledgeBatchRequest struct {
 // @Param        ids       query     []string  true   "知识ID列表"
 // @Param        kb_id     query     string   false  "可选，知识库ID（用于共享知识库时指定范围）"
 // @Param        agent_id  query     string   false  "可选，共享智能体ID（用于按智能体空间批量拉取文件详情）"
-// @Success      200       {object}  map[string]interface{}  "知识列表"
+// @Success      200       {object}  handler.DataResponse{data=[]types.Knowledge}  "知识列表"
 // @Failure      400       {object}  errors.AppError        "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -2298,7 +2332,7 @@ type UpdateKnowledgeRequest struct {
 // @Produce      json
 // @Param        id       path      string                   true  "知识ID"
 // @Param        request  body      UpdateKnowledgeRequest   true  "更新字段（均可选）"
-// @Success      200      {object}  map[string]interface{}  "更新成功"
+// @Success      200      {object}  handler.UpdateKnowledgeResponse  "更新成功"
 // @Failure      400      {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -2410,7 +2444,7 @@ func (h *KnowledgeHandler) RegenerateKnowledgeSummary(c *gin.Context) {
 // @Produce      json
 // @Param        id       path      string                       true  "知识ID"
 // @Param        request  body      types.ManualKnowledgePayload true  "手工知识内容"
-// @Success      200      {object}  map[string]interface{}       "更新后的知识"
+// @Success      200      {object}  handler.DataResponse{data=types.Knowledge}       "更新后的知识"
 // @Failure      400      {object}  errors.AppError              "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -2459,17 +2493,24 @@ func (h *KnowledgeHandler) UpdateManualKnowledge(c *gin.Context) {
 	})
 }
 
+// ReparseKnowledgeRequest is the optional body of POST /knowledge/{id}/reparse.
+type ReparseKnowledgeRequest struct {
+	// ProcessConfig overrides the processing options stored at upload time.
+	ProcessConfig *types.KnowledgeProcessOverrides `json:"process_config"`
+}
+
 // ReparseKnowledge godoc
 // @Summary      重新解析知识
 // @Description  删除知识中现有的文档内容并重新解析，使用异步任务方式处理
 // @Tags         知识管理
 // @Accept       json
 // @Produce      json
-// @Param        id   path      string  true  "知识ID"
-// @Param        body body      object  false  "可选的处理配置覆盖：{\"process_config\": KnowledgeProcessOverrides}"
-// @Success      200  {object}  map[string]interface{}  "重新解析任务已提交"
-// @Failure      400  {object}  errors.AppError         "请求参数错误"
-// @Failure      403  {object}  errors.AppError         "权限不足"
+// @Param        id    path  string                   true   "知识ID"
+// @Param        body  body  ReparseKnowledgeRequest  false  "可选；不传则沿用上传时的处理配置"
+// @Success      200  {object}  handler.DataMessageResponse{data=types.Knowledge}  "重新解析任务已提交"
+// @Failure      400  {object}  errors.AppError  "请求参数错误"
+// @Failure      403  {object}  errors.AppError  "权限不足"
+// @Failure      404  {object}  errors.AppError  "知识不存在"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/{id}/reparse [post]
@@ -2495,9 +2536,7 @@ func (h *KnowledgeHandler) ReparseKnowledge(c *gin.Context) {
 	// overrides stored at upload time.
 	var processOverrides *types.KnowledgeProcessOverrides
 	if c.Request.ContentLength != 0 {
-		var req struct {
-			ProcessConfig *types.KnowledgeProcessOverrides `json:"process_config"`
-		}
+		var req ReparseKnowledgeRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			logger.Error(ctx, "Failed to parse reparse request body", err)
 			c.Error(errors.NewBadRequestError("Invalid reparse request body").WithDetails(err.Error()))
@@ -2535,7 +2574,7 @@ func (h *KnowledgeHandler) ReparseKnowledge(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "知识ID"
-// @Success      200  {object}  map[string]interface{}  "取消已提交"
+// @Success      200  {object}  handler.DataMessageResponse{data=types.Knowledge}  "取消已提交"
 // @Failure      400  {object}  errors.AppError         "状态不支持取消"
 // @Failure      403  {object}  errors.AppError         "权限不足"
 // @Failure      404  {object}  errors.AppError         "知识不存在"
@@ -2593,7 +2632,7 @@ type knowledgeTagBatchRequest struct {
 // @Accept       json
 // @Produce      json
 // @Param        request  body      object  true  "标签更新请求（updates 必填，kb_id 可选）"
-// @Success      200      {object}  map[string]interface{}  "更新成功"
+// @Success      200      {object}  handler.SuccessResponse  "更新成功"
 // @Failure      400      {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -2670,7 +2709,7 @@ func (h *KnowledgeHandler) UpdateKnowledgeTagBatch(c *gin.Context) {
 // @Param        id        path      string  true  "知识ID"
 // @Param        chunk_id  path      string  true  "分块ID"
 // @Param        request   body      object{image_info=string}  true  "图像信息"
-// @Success      200       {object}  map[string]interface{}     "更新成功"
+// @Success      200       {object}  handler.MessageResponse     "更新成功"
 // @Failure      400       {object}  errors.AppError            "请求参数错误"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -2740,7 +2779,7 @@ func (h *KnowledgeHandler) UpdateImageInfo(c *gin.Context) {
 // @Param        file_types query     string  false "Comma-separated file extensions to filter (e.g., csv,xlsx)"
 // @Param        agent_id   query     string  false "Shared agent ID (search within agent's KB scope)"
 // @Param        recent     query     bool    false "Return recent files when keyword is empty"
-// @Success      200         {object}  map[string]interface{}     "Search results"
+// @Success      200         {object}  handler.KnowledgeSearchKnowledgeResponse     "Search results"
 // @Failure      400         {object}  errors.AppError            "Invalid request"
 // @Security     Bearer
 // @Security     ApiKeyAuth
@@ -3191,7 +3230,7 @@ type batchReparseKnowledgeRequest struct {
 // @Accept       json
 // @Produce      json
 // @Param        request  body      batchReparseKnowledgeRequest  true  "批量重解析请求"
-// @Success      200      {object}  map[string]interface{}        "任务已提交"
+// @Success      200      {object}  handler.SubmittedTaskResponse  "任务已提交"
 // @Failure      400      {object}  errors.AppError               "请求参数错误"
 // @Failure      403      {object}  errors.AppError               "权限不足"
 // @Security     Bearer
