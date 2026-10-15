@@ -188,6 +188,14 @@ func TestFromSpecRejectsBadAnnotations(t *testing.T) {
 		"catch-all before the last segment": {
 			`{"id": "doc.list", "risk": "read"}`, `{"id": "doc.list", "risk": "read", "catch_all": "id"}`,
 		},
+		"items without a target": {
+			`{"id": "doc.get", "risk": "read"}`,
+			`{"id": "doc.get", "risk": "read", "items": {"param": "a", "target": "b", "as": "c", "label": "d"}}`,
+		},
+		"items missing a key": {
+			`"target": "doc.get", "label": "title"`,
+			`"target": "doc.get", "label": "title", "items": {"param": "knowledge_ids", "target": "doc.get"}`,
+		},
 		"catch-all naming no segment": {
 			`{"id": "doc.get", "risk": "read"}`, `{"id": "doc.get", "risk": "read", "catch_all": "slug"}`,
 		},
@@ -267,6 +275,9 @@ func TestBuiltinMatchesHandlerAnnotations(t *testing.T) {
 		meta := agentOperation{ID: op.ID, Risk: op.Risk}
 		if op.Target != nil {
 			meta.Target, meta.Label = op.Target.Operation, op.Target.Label
+			if it := op.Target.Items; it != nil {
+				meta.Items = &agentItems{Param: it.Param, Target: it.Operation, As: it.As, Label: it.Label}
+			}
 		}
 		if i := strings.LastIndex(op.Route, "/*"); i >= 0 {
 			meta.CatchAll = op.Route[i+2:]
@@ -384,4 +395,27 @@ func TestBuiltinListAndDocumentLimits(t *testing.T) {
 		}
 	}
 	assert.Equal(t, Field{From: "content", As: "content", MaxRunes: 8000}, contentField)
+}
+
+func TestTypeParamCombinesListAndStringBounds(t *testing.T) {
+	doc := &specDocument{}
+	shape := &specSchema{Type: "array", Items: &specSchema{Type: "string"}}
+	var p Param
+	require.NoError(t, doc.typeParam(&p, shape, "2", "5"))
+	op := Operation{Method: http.MethodPost, Params: []Param{p}}
+	op.Params[0].Name = "titles"
+	op.Params[0].In = InBody
+	_, err := op.Build(map[string]json.RawMessage{"titles": raw([]string{"one", "two"})})
+	require.NoError(t, err)
+	_, err = op.Build(map[string]json.RawMessage{"titles": raw([]string{"one", "two", "three"})})
+	require.Error(t, err, "the item count remains bounded")
+	_, err = op.Build(map[string]json.RawMessage{"titles": raw([]string{"too long"})})
+	require.Error(t, err, "each string remains bounded")
+
+	for _, kind := range []string{"integer", "boolean"} {
+		assert.Error(t, doc.typeParam(&Param{}, &specSchema{Type: kind}, "", "5"))
+	}
+	for _, kind := range []string{"string", "boolean"} {
+		assert.Error(t, doc.typeParam(&Param{}, &specSchema{Type: kind}, "2", ""))
+	}
 }
