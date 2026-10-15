@@ -209,6 +209,22 @@ func TestFromSpecRejectsBadAnnotations(t *testing.T) {
 	}
 }
 
+func TestFromSpecAgentRequired(t *testing.T) {
+	spec := strings.Replace(testSpec,
+		`"description": "S",
+         "x-agent": true}`,
+		`"description": "S",
+         "x-agent": true, "x-agent-required": true}`, 1)
+	ops, err := FromSpec([]byte(spec))
+	require.NoError(t, err)
+	for _, op := range ops {
+		if op.ID == "doc.list" {
+			status, _ := op.Param("status")
+			assert.True(t, status.Required, "x-agent-required makes an optional param mandatory for the model")
+		}
+	}
+}
+
 func TestFromSpecMarksCatchAllSegment(t *testing.T) {
 	spec := strings.Replace(testSpec,
 		`{"id": "doc.get", "risk": "read"}`, `{"id": "doc.get", "risk": "read", "catch_all": "id"}`, 1)
@@ -275,6 +291,7 @@ func TestBuiltinMatchesHandlerAnnotations(t *testing.T) {
 		meta := agentOperation{ID: op.ID, Risk: op.Risk}
 		if op.Target != nil {
 			meta.Target, meta.Label = op.Target.Operation, op.Target.Label
+			meta.RequireCompleteTarget = op.Target.RequireComplete
 			if it := op.Target.Items; it != nil {
 				meta.Items = &agentItems{Param: it.Param, Target: it.Operation, As: it.As, Label: it.Label}
 			}
