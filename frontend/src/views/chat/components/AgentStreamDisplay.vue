@@ -168,6 +168,7 @@
                     :class="{ 'no-results': !hasActionResult(event) }">
                     <div class="action-title">
                       <BrowserIcon v-if="event.tool_name === 'local_browser'" class="action-title-icon browser-tool-icon" />
+                      <span v-else-if="isCollaborationTool(event.tool_name)" class="action-title-icon icon-mask" :style="maskIconStyle(agentIcon)" aria-hidden="true" />
                       <t-icon v-else-if="event.tool_name" class="action-title-icon"
                         :name="getToolIconName(event.tool_name)" />
                       <t-tooltip v-if="event.tool_name === 'todo_write' && event.tool_data?.steps"
@@ -521,6 +522,7 @@
                   :class="{ 'no-results': !hasActionResult(event) }">
                   <div class="action-title">
                     <BrowserIcon v-if="event.tool_name === 'local_browser'" class="action-title-icon browser-tool-icon" />
+                    <span v-else-if="isCollaborationTool(event.tool_name)" class="action-title-icon icon-mask" :style="maskIconStyle(agentIcon)" aria-hidden="true" />
                     <t-icon v-else-if="event.tool_name" class="action-title-icon" :name="getToolIconName(event.tool_name)" />
                     <t-tooltip v-if="event.tool_name === 'todo_write' && event.tool_data?.steps"
                       :content="t('agent.updatePlan')" placement="top">
@@ -748,7 +750,7 @@ import {
 } from '@/utils/sandboxArtifactRefs';
 import type { ProtectedFileAccessContext } from '@/utils/protectedFileAccess';
 import { unwrapFinalAnswerWrappers, thinkingEqualsAnswer } from '@/utils/finalAnswer';
-import { getAgentToolIconName } from '@/utils/agent-tool-icons';
+import { getAgentToolIconName, isCollaborationTool } from '@/utils/agent-tool-icons';
 import { getMcpToolDisplayType, getMcpToolTitle, mcpToolResultOutput } from '@/utils/mcpToolDisplay';
 import { getCatalogToolDisplayType, getCatalogToolTitle } from '@/utils/catalogToolDisplay';
 import { getQueryText, getWikiPageText } from '@/utils/agent-tool-display';
@@ -860,6 +862,7 @@ const TOOL_NAME_KEYS: Record<string, string> = {
   interrupt_agent: 'agentStream.tools.interrupt_agent',
   wait_agent: 'agentStream.tools.wait_agent',
   open_page: 'agentStream.tools.openPage',
+  view_page: 'agentStream.tools.viewPage',
   read_page: 'agentStream.tools.readPage',
   select_tab: 'agentStream.tools.selectTab',
   fill_page: 'agentStream.tools.fillPage',
@@ -2209,7 +2212,7 @@ const displayEvents = computed(() => {
 });
 
 const isPageLinkEvent = (event: any): boolean =>
-  event?.type === 'tool_call' && event.tool_name === 'open_page' && !event.pending &&
+  event?.type === 'tool_call' && (event.tool_name === 'open_page' || event.tool_name === 'view_page') && !event.pending &&
   event.success !== false && isAssistantPageLink(event.tool_data);
 
 // Once the steps fold away, the page buttons move under the final answer:
@@ -2322,7 +2325,7 @@ const isReferenceDrawerTool = (toolName?: string | null): boolean =>
 const hasExpandableResults = (event: any): boolean => {
   if (isReferenceDrawerTool(event?.tool_name)) return false;
   // Its card is the result.
-  if (event?.tool_name === 'open_page' && event.success !== false) return false;
+  if ((event?.tool_name === 'open_page' || event?.tool_name === 'view_page') && event.success !== false) return false;
   if (event?.tool_name === 'fill_page' && event.success !== false) return false;
   // The snapshot is page text for the model, not something to read here.
   if ((event?.tool_name === 'read_page' || event?.tool_name === 'select_tab') && event.success !== false) return false;
