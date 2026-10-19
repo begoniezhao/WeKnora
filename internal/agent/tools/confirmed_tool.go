@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
+	"github.com/Tencent/WeKnora/internal/agent/hitl"
 	"github.com/Tencent/WeKnora/internal/agent/operations"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -29,6 +30,28 @@ func NewConfirmedTool(
 	inner types.Tool, risk operations.Risk, access operations.Access, gate approval.BuiltinApproval,
 ) *ConfirmedTool {
 	return &ConfirmedTool{inner: inner, risk: risk, access: access, gate: gate}
+}
+
+// RequireConfirmation decorates an existing tool without permitting replacement
+// by another implementation. Duplicate registration remains first-wins.
+func (r *ToolRegistry) RequireConfirmation(
+	name string, risk operations.Risk, access operations.Access, gate approval.BuiltinApproval,
+) error {
+	inner, err := r.GetTool(name)
+	if err != nil {
+		return err
+	}
+	if _, wrapped := inner.(*ConfirmedTool); !wrapped {
+		r.tools[name] = NewConfirmedTool(inner, risk, access, gate)
+	}
+	return nil
+}
+
+// BindSession preserves the underlying sandbox tool's session-local layout.
+func (t *ConfirmedTool) BindSession(id string) {
+	if bound, ok := t.inner.(sessionBinder); ok {
+		bound.BindSession(id)
+	}
 }
 
 // Name returns the wrapped tool's name.
@@ -122,6 +145,9 @@ func (t *ConfirmedTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(WithToolExecContext(meta.ApprovalCtx, meta), timeout)
 		defer cancel()
+	}
+	if err := hitl.CheckDelegation(ctx); err != nil {
+		return operationFailure(err.Error()), nil
 	}
 	return t.inner.Execute(ctx, args)
 }

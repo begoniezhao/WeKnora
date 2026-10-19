@@ -9,14 +9,35 @@ import (
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/agent"
+	"github.com/Tencent/WeKnora/internal/agent/collaboration"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
+	modelruntime "github.com/Tencent/WeKnora/internal/models/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
+
+// modelMaxOutputTokens returns the configured or cataloged output limit of a
+// chat model, or zero when neither declares one.
+func modelMaxOutputTokens(m *types.Model) int {
+	if m.Parameters.MaxOutputTokens > 0 {
+		return m.Parameters.MaxOutputTokens
+	}
+	if m.Source != types.ModelSourceRemote {
+		return 0
+	}
+	resolved, err := modelruntime.Resolve(modelruntime.Ref{
+		Provider: m.Parameters.Provider, Model: m.Name, BaseURL: m.Parameters.BaseURL,
+		ModelType: types.ModelTypeKnowledgeQA, Extra: m.Parameters.ExtraConfig, Override: m.Parameters.Spec,
+	})
+	if err != nil {
+		return 0
+	}
+	return resolved.Capabilities().MaxOutputTokens
+}
 
 // AgentQA performs agent-based question answering with conversation history and streaming support
 // customAgent is optional - if provided, uses custom agent configuration instead of tenant defaults
@@ -27,6 +48,15 @@ func (s *sessionService) AgentQA(
 	eventBus *event.EventBus,
 ) error {
 	sessionID := req.Session.ID
+	if req.Session.Kind == types.SessionKindAgentDelegated {
+		b := collaboration.FromContext(ctx)
+		if b == nil || b.Child == nil || b.Child.Member.SessionID != sessionID {
+			return errors.New("delegated conversations require a scheduler-owned execution")
+		}
+		if err := b.Runtime.CheckOwner(ctx, *b.Child); err != nil {
+			return err
+		}
+	}
 	// Propagate the session ID so stateful sandbox backends (CubeSandbox) can
 	// bind script execution to a per-session MicroVM instance.
 	ctx = types.WithSessionID(ctx, sessionID)
@@ -105,6 +135,7 @@ func (s *sessionService) AgentQA(
 		if modelInfo, err := s.modelService.GetModelByID(ctx, effectiveModelID); err == nil && modelInfo != nil {
 			agentModelSupportsVision = modelInfo.Parameters.SupportsVision
 			modelContextWindow = modelInfo.Parameters.ContextWindow
+			agentConfig.ModelMaxOutputTokens = modelMaxOutputTokens(modelInfo)
 		}
 	}
 	agentConfig.ChatModelSupportsVision = agentModelSupportsVision
@@ -241,6 +272,14 @@ func (s *sessionService) AgentQA(
 		}
 	}
 
+	pin, err := sandboxConfigForExistingSandbox(ctx, s.sandboxPinner, sessionID)
+	if err != nil {
+		return fmt.Errorf("read sandbox scope for child tasks: %w", err)
+	}
+	ctx = context.WithValue(ctx, childSourceKey{}, childSource{
+		Agent: req.CustomAgent, ModelID: effectiveModelID, SandboxConfigID: pin.ConfigID,
+	})
+
 	// Create agent engine with EventBus
 	logger.Info(ctx, "Creating agent engine")
 	engine, err := s.agentService.CreateAgentEngine(
@@ -284,11 +323,23 @@ func (s *sessionService) AgentQA(
 	}
 
 	engine.SetInteractive(req.Interactive)
-	if req.Suspendable && s.cfg != nil && s.cfg.Agent.PromptSuspend() {
+	collaborating := false
+	if bound, ok := engine.(interface{ HasCollaboration() bool }); ok {
+		collaborating = bound.HasCollaboration()
+	}
+	promptSuspend := s.cfg != nil && s.cfg.Agent.PromptSuspend()
+	if req.Suspendable && (promptSuspend || collaborating) {
 		if request, err := json.Marshal(resumableAgentRequest(ctx, req)); err != nil {
 			logger.Warnf(ctx, "Run cannot be suspended, encoding its request failed: %v", err)
 		} else {
 			engine.EnableSuspension(request)
+			// Scheduler-owned children always suspend on prompts: their approvals
+			// are forwarded to the parent and resumed by the scheduler.
+			if b := collaboration.FromContext(ctx); !promptSuspend && (b == nil || b.Child == nil) {
+				if restricted, ok := engine.(interface{ RestrictSuspensionToCollaboration() }); ok {
+					restricted.RestrictSuspensionToCollaboration()
+				}
+			}
 		}
 	}
 
@@ -386,6 +437,11 @@ func (s *sessionService) buildAgentConfig(
 	tenantInfo *types.Tenant,
 	agentTenantID uint64,
 ) (*types.AgentConfig, error) {
+	if inherited, err := inheritedConfigFromBinding(ctx); err != nil {
+		return nil, err
+	} else if inherited != nil {
+		return s.restoreInheritedConfig(ctx, inherited, tenantInfo)
+	}
 	customAgent := req.CustomAgent
 	agentConfig := &types.AgentConfig{
 		MaxIterations:                 customAgent.Config.MaxIterations,
@@ -408,6 +464,7 @@ func (s *sessionService) buildAgentConfig(
 		MaxCompletionTokens:           customAgent.Config.MaxCompletionTokens,
 		RetainRetrievalHistory:        customAgent.Config.RetainRetrievalHistory,
 		SharedAgentReadOnly:           req.SharedAgentReadOnly,
+		AssistantAccess:               tenantInfo.AssistantConfig.EffectiveAccessLevel(req.AssistantAccess),
 		// The model is always told it may call tools in parallel; without
 		// this the engine still ran them one by one, so three searches in
 		// one reply cost three sequential embed/retrieve/rerank rounds.
