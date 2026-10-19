@@ -1379,6 +1379,8 @@ export default {
       authWaitTimeout: '授權等待超時（秒）',
       authWaitTimeoutDesc: '對話中觸發 OAuth 授權時，等待你完成授權的最長秒數，超時後自動跳過授權提示（僅對使用 OAuth 的 MCP 服務生效）。',
       authWaitTimeoutPlaceholder: '預設 600 秒',
+      accessLevel: '執行權限上限',
+      accessLevelDesc: '修改資料的工具（MCP 工具、Wiki 寫入）能否直接執行：唯讀時不提供這類工具，修改前確認時每次先徵求你同意。被標記為需要審批的 MCP 工具始終需要確認。',
       unavailableService: '不可用服務'
     },
     agentType: {
@@ -2185,6 +2187,11 @@ export default {
       argsLabel: '呼叫參數',
       argsModified: '已修改',
       allowInSession: '本會話內同類操作都允許',
+      grantLapsed: {
+        changed: '先前的允許已失效：自動化的 Agent 設定、成員角色或權限上限已變更。',
+        expired: '先前的允許已過期。',
+        idle: '先前的允許因長期未使用已失效。',
+      },
       countdownShort: '{seconds}s',
       approve: '透過並執行',
       reject: '拒絕',
@@ -8302,6 +8309,15 @@ export default {
     }
   },
   chatHeader: {
+    grants: {
+      menu: '已允許的操作',
+      description: '本對話中已允許、不再詢問的操作。撤銷後再次呼叫時會重新詢問。',
+      empty: '暫無已允許的操作',
+      revoke: '撤銷',
+      revoked: '已撤銷',
+      revokeFailed: '撤銷失敗',
+      loadFailed: '載入失敗',
+    },
     moreActions: '更多對話操作',
     toggleSandboxPanel: '沙箱終端',
     copySessionId: '複製會話 ID',

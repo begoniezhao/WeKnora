@@ -1377,6 +1377,8 @@ export default {
       authWaitTimeout: '인증 대기 시간(초)',
       authWaitTimeoutDesc: '대화 중 OAuth 인증이 필요할 때 인증 완료를 기다리는 최대 시간(초)이며, 초과하면 인증 요청을 건너뜁니다(OAuth를 사용하는 MCP 서비스에만 적용).',
       authWaitTimeoutPlaceholder: '기본 600초',
+      accessLevel: '실행 권한 상한',
+      accessLevelDesc: '데이터를 변경하는 도구(MCP 도구, Wiki 쓰기)를 확인 없이 실행할지 여부입니다. 읽기 전용이면 이러한 도구를 제공하지 않고, 변경 전 확인이면 매번 확인을 요청합니다. 승인이 필요하도록 표시된 MCP 도구는 항상 확인합니다.',
       unavailableService: '사용할 수 없는 서비스'
     },
     agentType: {
@@ -2183,6 +2185,11 @@ export default {
       argsLabel: '인수',
       argsModified: '수정됨',
       allowInSession: '이 대화에서 같은 작업은 모두 허용',
+      grantLapsed: {
+        changed: '이전 허용이 더 이상 적용되지 않습니다. 자동화의 Agent 설정, 역할 또는 권한 상한이 변경되었습니다.',
+        expired: '이전 허용이 만료되었습니다.',
+        idle: '이전 허용이 오랫동안 사용되지 않아 만료되었습니다.',
+      },
       countdownShort: '{seconds}초',
       approve: '승인 후 실행',
       reject: '거부',
@@ -8301,6 +8308,15 @@ export default {
     }
   },
   chatHeader: {
+    grants: {
+      menu: '허용된 작업',
+      description: '이 대화에서 다시 묻지 않도록 허용된 작업입니다. 취소하면 다음에 다시 묻습니다.',
+      empty: '허용된 작업이 없습니다',
+      revoke: '취소',
+      revoked: '취소되었습니다',
+      revokeFailed: '취소하지 못했습니다',
+      loadFailed: '불러오지 못했습니다',
+    },
     moreActions: '대화 추가 작업',
     toggleSandboxPanel: '샌드박스 터미널',
     copySessionId: '세션 ID 복사',

@@ -1379,6 +1379,8 @@ export default {
       authWaitTimeout: '授权等待超时（秒）',
       authWaitTimeoutDesc: '对话中触发 OAuth 授权时，等待你完成授权的最长秒数，超时后自动跳过授权提示（仅对使用 OAuth 的 MCP 服务生效）。',
       authWaitTimeoutPlaceholder: '默认 600 秒',
+      accessLevel: '执行权限上限',
+      accessLevelDesc: '修改数据的工具（MCP 工具、Wiki 写入）能否直接执行：只读时不提供这类工具，修改前确认时每次先征求你同意。被标记为需要审批的 MCP 工具始终需要确认。',
       unavailableService: '不可用服务'
     },
     agentType: {
@@ -2185,6 +2187,11 @@ export default {
       argsLabel: '调用参数',
       argsModified: '已修改',
       allowInSession: '本会话内同类操作都允许',
+      grantLapsed: {
+        changed: '之前的允许已失效：自动化的 Agent 配置、成员角色或权限上限已变化。',
+        expired: '之前的允许已过期。',
+        idle: '之前的允许因长期未使用已失效。',
+      },
       countdownShort: '{seconds}s',
       approve: '通过并执行',
       reject: '拒绝',
@@ -8302,6 +8309,15 @@ export default {
     }
   },
   chatHeader: {
+    grants: {
+      menu: '已允许的操作',
+      description: '本对话中已允许、不再询问的操作。撤销后再次调用时会重新询问。',
+      empty: '暂无已允许的操作',
+      revoke: '撤销',
+      revoked: '已撤销',
+      revokeFailed: '撤销失败',
+      loadFailed: '加载失败',
+    },
     moreActions: '更多对话操作',
     toggleSandboxPanel: '沙箱终端',
     copySessionId: '复制会话 ID',

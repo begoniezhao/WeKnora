@@ -1377,6 +1377,8 @@ export default {
       authWaitTimeout: 'Тайм-аут ожидания аутентификации (с)',
       authWaitTimeoutDesc: 'Максимальное время ожидания (в секундах) завершения OAuth-аутентификации при запросе во время диалога; по его истечении запрос пропускается (влияет только на MCP-сервисы с OAuth).',
       authWaitTimeoutPlaceholder: 'Default 600 seconds',
+      accessLevel: 'Access level',
+      accessLevelDesc: 'Whether tools that change data (MCP tools, Wiki writes) run without asking. Read-only leaves them out; confirm asks you each time. MCP tools marked as requiring approval always ask.',
       unavailableService: 'Недоступный сервис'
     },
     agentType: {
@@ -2183,6 +2185,11 @@ export default {
       argsLabel: 'Аргументы',
       argsModified: 'Изменено',
       allowInSession: 'Разрешать такие действия до конца беседы',
+      grantLapsed: {
+        changed: 'Прежнее разрешение больше не действует: изменились настройки агента автоматизации, ваша роль или предел доступа.',
+        expired: 'Срок прежнего разрешения истёк.',
+        idle: 'Прежнее разрешение истекло: им долго не пользовались.',
+      },
       countdownShort: '{seconds} с',
       approve: 'Подтвердить и выполнить',
       reject: 'Отклонить',
@@ -8301,6 +8308,15 @@ export default {
     }
   },
   chatHeader: {
+    grants: {
+      menu: 'Разрешённые действия',
+      description: 'Действия, разрешённые в этом диалоге без повторного запроса. После отзыва запрос появится снова.',
+      empty: 'Разрешённых действий пока нет',
+      revoke: 'Отозвать',
+      revoked: 'Отозвано',
+      revokeFailed: 'Не удалось отозвать',
+      loadFailed: 'Не удалось загрузить',
+    },
     moreActions: 'Другие действия с диалогом',
     toggleSandboxPanel: 'Терминал песочницы',
     copySessionId: 'Копировать ID сессии',

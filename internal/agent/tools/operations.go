@@ -13,6 +13,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/operations"
+	"github.com/Tencent/WeKnora/internal/agent/policy"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -368,11 +369,15 @@ func (t *RunOperationTool) Execute(ctx context.Context, args json.RawMessage) (*
 		identity.Agent.SessionID = meta.SessionID
 	}
 	identity.Agent.Operation = op.ID
+	identity.Agent.ActingVia = types.ActingViaFromContext(ctx)
 
 	// An answered prompt still governs its blocked call even if the workspace
 	// now allows writes without approval. Preserve declines and edited params.
 	resumed := meta != nil && meta.Answered != nil && meta.Answered.Kind == types.AgentPromptKindToolApproval
-	if resumed || t.rt.Access.NeedsApproval(op) {
+	action := policy.Action{Risk: op.Risk, Always: op.AlwaysConfirm}
+	verdict := policy.Decide(action, t.rt.Access.Rules())
+	policy.Record(ctx, op.ID, action, t.rt.Access.Rules(), verdict)
+	if resumed || verdict != policy.Allow {
 		confirmed, blocked := t.confirm(ctx, op, input, identity)
 		if blocked != nil {
 			return blocked, nil
@@ -501,7 +506,7 @@ func (t *RunOperationTool) confirm(
 ) (confirmedCall, *types.ToolResult) {
 	meta, _ := ToolExecFromContext(ctx)
 	resumed := meta != nil && meta.Answered != nil && meta.Answered.Kind == types.AgentPromptKindToolApproval
-	if t.rt.Gate == nil || meta == nil || meta.EventBus == nil || (!meta.Interactive && !resumed) {
+	if t.rt.Gate == nil || meta == nil || meta.EventBus == nil || (!meta.CanAsk() && !resumed) {
 		return confirmedCall{}, operationFailure(fmt.Sprintf(
 			"%s changes data and needs the user's confirmation, which cannot be shown here. "+
 				"Tell the user what you would do and let them do it in WeKnora.", op.ID))
@@ -551,6 +556,7 @@ func (t *RunOperationTool) confirm(
 			ToolCallID:         meta.ToolCallID,
 			Grant:              grant,
 			GrantScope:         grantScope,
+			GrantRisk:          op.Risk,
 		})
 		if err != nil {
 			msg := fmt.Sprintf("could not ask the user to confirm %s: %v", op.ID, err)
@@ -711,7 +717,7 @@ func (t *RunOperationTool) readTarget(
 func approvalGrant(
 	ctx context.Context, op operations.Operation, params map[string]json.RawMessage, target operations.Projected,
 ) (grant, scope string) {
-	if op.Risk != operations.RiskWrite || op.AlwaysConfirm {
+	if !policy.Pregrantable(policy.Action{Risk: op.Risk, Always: op.AlwaysConfirm}) {
 		return "", ""
 	}
 	declared := func(name string) string {

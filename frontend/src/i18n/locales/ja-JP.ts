@@ -353,6 +353,15 @@ export default {
     noSessions: '会話はまだありません'
   },
   chatHeader: {
+    grants: {
+      menu: '許可済みの操作',
+      description: 'この会話で確認なしに許可された操作です。取り消すと次回また確認されます。',
+      empty: '許可済みの操作はありません',
+      revoke: '取り消す',
+      revoked: '取り消しました',
+      revokeFailed: '取り消しに失敗しました',
+      loadFailed: '読み込みに失敗しました',
+    },
     moreActions: 'その他の会話操作',
     toggleSandboxPanel: 'サンドボックスターミナル',
     copySessionId: 'セッションIDをコピー',
@@ -6477,6 +6486,11 @@ export default {
       argsLabel: '引数',
       argsModified: '変更あり',
       allowInSession: 'この会話では同様の操作をすべて許可',
+      grantLapsed: {
+        changed: '以前の許可は無効になりました。自動化の Agent 設定、ロール、または権限上限が変更されました。',
+        expired: '以前の許可は期限切れです。',
+        idle: '以前の許可は長期間使われなかったため無効になりました。',
+      },
       countdownShort: '{seconds}秒',
       approve: '承認して実行',
       reject: '拒否',
@@ -7313,6 +7327,8 @@ export default {
       authWaitTimeout: '認証待機タイムアウト（秒）',
       authWaitTimeoutDesc: '会話中にOAuth認証を求められた際、完了を待機する最大秒数です。この時間を過ぎると、認証の確認は自動的にスキップされます（OAuthを使用するMCPサービスのみに影響します）。',
       authWaitTimeoutPlaceholder: 'デフォルト600秒',
+      accessLevel: '実行権限の上限',
+      accessLevelDesc: 'データを変更するツール（MCP ツール、Wiki への書き込み）を確認なしで実行できるかどうか。読み取り専用ではこれらのツールを提供せず、変更前に確認では毎回確認します。承認が必要と設定された MCP ツールは常に確認します。',
       unavailableService: '利用できないサービス'
     },
     llmCallTimeout: {

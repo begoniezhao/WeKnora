@@ -353,6 +353,15 @@ export default {
     noSessions: 'No conversations yet'
   },
   chatHeader: {
+    grants: {
+      menu: 'Allowed actions',
+      description: 'Actions allowed for this conversation without asking again. Revoke one to be asked next time.',
+      empty: 'No allowed actions yet',
+      revoke: 'Revoke',
+      revoked: 'Revoked',
+      revokeFailed: 'Failed to revoke',
+      loadFailed: 'Failed to load',
+    },
     moreActions: 'More conversation actions',
     toggleSandboxPanel: 'Sandbox terminal',
     copySessionId: 'Copy Session ID',
@@ -6477,6 +6486,11 @@ export default {
       argsLabel: 'Arguments',
       argsModified: 'Modified',
       allowInSession: 'Allow this for the rest of the conversation',
+      grantLapsed: {
+        changed: 'Your earlier approval no longer applies: the automation\'s agent setup, your role or the access ceiling changed.',
+        expired: 'Your earlier approval has expired.',
+        idle: 'Your earlier approval lapsed after a long time unused.',
+      },
       countdownShort: '{seconds}s',
       approve: 'Approve & run',
       reject: 'Reject',
@@ -7313,6 +7327,8 @@ export default {
       authWaitTimeout: 'Authentication Wait Timeout (s)',
       authWaitTimeoutDesc: 'Maximum seconds to wait for you to complete OAuth authentication when prompted during a conversation; the prompt is skipped after it elapses (only affects OAuth MCP services).',
       authWaitTimeoutPlaceholder: 'Default 600 seconds',
+      accessLevel: 'Access level',
+      accessLevelDesc: 'Whether tools that change data (MCP tools, Wiki writes) run without asking. Read-only leaves them out; confirm asks you each time. MCP tools marked as requiring approval always ask.',
       unavailableService: 'Unavailable service'
     },
     llmCallTimeout: {
