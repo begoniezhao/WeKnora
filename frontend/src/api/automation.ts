@@ -40,6 +40,7 @@ export interface Automation {
   description: string
   enabled: boolean
   agent_id: string
+  model_id: string
   instruction: string
   trigger: AutomationTrigger
   session_mode: AutomationSessionMode
@@ -66,6 +67,7 @@ export type AutomationInput = Partial<Pick<Automation,
   | 'name'
   | 'description'
   | 'agent_id'
+  | 'model_id'
   | 'instruction'
   | 'trigger'
   | 'session_mode'
@@ -213,13 +215,34 @@ export interface AppNotification {
   created_at: string
 }
 
-export function listNotifications(limit = 20) {
-  return get<{ success: boolean; data: { items: AppNotification[]; unread: number } }>(
-    `/api/v1/notifications?limit=${limit}`,
+export interface PendingNotification {
+  id: string
+  title: string
+  kind: string
+  link: string
+  created_at: string
+}
+
+export interface NotificationPage {
+  items: AppNotification[]
+  pending: PendingNotification[]
+  unread: number
+  read_count: number
+  next_cursor: string
+}
+
+export function listNotifications(limit = 20, cursor = '') {
+  return get<{ success: boolean; data: NotificationPage }>(
+    `/api/v1/notifications?limit=${limit}${cursor ? `&cursor=${enc(cursor)}` : ''}`,
   )
 }
 
-/** Mark ids read; no ids marks all of them. */
+/** Removes read history only; live approvals and run records are unaffected. */
+export function clearReadNotifications() {
+  return del<{ success: boolean }>('/api/v1/notifications/read')
+}
+
+/** Mark history ids read; no ids marks all history. Pending work is separate. */
 export function markNotificationsRead(ids: string[] = []) {
   return post<{ success: boolean }>('/api/v1/notifications/read', { ids })
 }

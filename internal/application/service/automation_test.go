@@ -145,7 +145,7 @@ func newAutomationFixture(t *testing.T) *automationFixture {
 	}
 	f.sessions = &automationSessions{db: db, run: done}
 	f.svc = NewAutomationService(db, f.agents, f.users, f.members, &collaborationTenants{},
-		f.messages, repository.NewAgentGrantRepository(db), NewNotificationService(db))
+		f.messages, repository.NewAgentGrantRepository(db), NewNotificationService(db), nil)
 	f.svc.now = func() time.Time { return f.now }
 	f.svc.Bind(f.sessions, f.broker, nil, nil)
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, automationTenant)
@@ -354,7 +354,10 @@ func (f *automationFixture) suspendOnApproval(t *testing.T, grant string) {
 		}
 		require.NoError(t, f.broker.Store().Create(ctx, prompt))
 		require.NoError(t, f.db.Create(prompt).Error)
-		snap, _ := json.Marshal(agent.RunSnapshot{Version: agent.RunSnapshotVersion, Query: req.Query})
+		resumable, _ := json.Marshal(types.ResumableAgentRequest{SummaryModelID: req.SummaryModelID})
+		snap, _ := json.Marshal(agent.RunSnapshot{
+			Version: agent.RunSnapshotVersion, Query: req.Query, Request: resumable,
+		})
 		require.NoError(t, f.broker.Suspensions().Save(ctx, &types.AgentRunSuspension{
 			AssistantMessageID: req.AssistantMessageID, PromptID: prompt.ID, SessionID: req.Session.ID,
 			Snapshot: snap,
@@ -373,9 +376,12 @@ func TestAutomationSuspendsAndResumesAfterApproval(t *testing.T) {
 	run := f.settleRun(t, queued.ID)
 	require.Equal(t, types.AutomationRunAwaitingApproval, run.Status)
 	require.NotEmpty(t, run.PendingPromptID)
-	page, err := NewNotificationService(f.db).List(f.ctx, 10, false)
+	notices := NewNotificationService(f.db)
+	notices.now = func() time.Time { return f.now }
+	page, err := notices.List(f.ctx, 10, false, "")
 	require.NoError(t, err)
-	require.Equal(t, types.NotificationAutomationAwaitingApproval, page.Items[0].Kind)
+	require.Len(t, page.Pending, 1)
+	require.Equal(t, types.AgentPromptKindToolApproval, page.Pending[0].Kind)
 
 	prompt, _ := f.broker.Store().Get(f.ctx, run.PendingPromptID)
 	require.True(t, f.svc.HandlesPrompt(f.ctx, prompt), "an automation prompt is not resumed as a chat")

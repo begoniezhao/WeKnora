@@ -276,7 +276,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "回答 Agent 运行中发起的交互（ask_user 提问、工具审批，或由浏览器自动应答的页面读写）。\nkind 须与交互一致，response 为该类型的回答 JSON（不接受未知字段）：\nask_user 为 {selected?, values?, text?, declined?}；\ntool_approval 为 {approved: bool, modified_args?: object, reason?: string, allow_in_session?: bool}；\npage_action 为 {declined?, error?, location?, snapshot?, applied?: [{ref, label?, summary?}],\nstayed?, return_path?}。\n返回 resumed=true 表示运行已挂起并在本次回答后恢复，客户端需重新接入该消息的事件流",
+                "description": "回答 Agent 运行中发起的交互（ask_user 提问、工具审批，或由浏览器自动应答的页面读写）。\nkind 须与交互一致，response 为该类型的回答 JSON（不接受未知字段）：\nask_user 为 {selected?, values?, text?, declined?}；\ntool_approval 为 {approved: bool, modified_args?: object, reason?: string, allow_in_session?: bool}；\npage_action 为 {declined?, error?, location?, snapshot?, applied?: [{ref, label?, summary?}],\nstayed?, return_path?}。\n返回 resumed=true 表示挂起的运行已请求恢复（自动化由调度器恢复），客户端需携带 resume_pending_id 重新接入该消息的事件流",
                 "consumes": [
                     "application/json"
                 ],
@@ -15138,6 +15138,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "上一页返回的 next_cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
                         "type": "boolean",
                         "description": "只看未读",
                         "name": "unread",
@@ -15146,7 +15152,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "{items, unread}",
+                        "description": "{items, pending, unread, read_count, next_cursor}",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -15162,7 +15168,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "ids 为空时全部标记已读",
+                "description": "ids 为空时将全部通知记录标为已读，不改变待处理事项",
                 "consumes": [
                     "application/json"
                 ],
@@ -15186,6 +15192,29 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "通知"
+                ],
+                "summary": "清理已读通知",
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -17747,6 +17776,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "等待此审批恢复后的事件流",
+                        "name": "resume_pending_id",
+                        "in": "query"
+                    },
+                    {
                         "enum": [
                             "handle",
                             "public"
@@ -17767,6 +17802,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "会话或消息不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "409": {
+                        "description": "审批恢复后的事件流尚未就绪",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
@@ -26289,6 +26330,11 @@ const docTemplate = `{
                     "type": "string",
                     "x-agent": true
                 },
+                "model_id": {
+                    "description": "ModelID overrides the agent's chat model; empty follows the agent default.",
+                    "type": "string",
+                    "x-agent": true
+                },
                 "name": {
                     "type": "string",
                     "x-agent": true
@@ -26406,6 +26452,11 @@ const docTemplate = `{
                         "skip",
                         "run_once"
                     ],
+                    "x-agent": true
+                },
+                "model_id": {
+                    "description": "Optional chat model from model.list; empty follows the agent default",
+                    "type": "string",
                     "x-agent": true
                 },
                 "name": {

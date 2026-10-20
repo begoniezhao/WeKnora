@@ -1816,6 +1816,11 @@ definitions:
       misfire_policy:
         type: string
         x-agent: true
+      model_id:
+        description: ModelID overrides the agent's chat model; empty follows the agent
+          default.
+        type: string
+        x-agent: true
       name:
         type: string
         x-agent: true
@@ -1907,6 +1912,11 @@ definitions:
         enum:
         - skip
         - run_once
+        type: string
+        x-agent: true
+      model_id:
+        description: Optional chat model from model.list; empty follows the agent
+          default
         type: string
         x-agent: true
       name:
@@ -14488,7 +14498,7 @@ paths:
         tool_approval 为 {approved: bool, modified_args?: object, reason?: string, allow_in_session?: bool}；
         page_action 为 {declined?, error?, location?, snapshot?, applied?: [{ref, label?, summary?}],
         stayed?, return_path?}。
-        返回 resumed=true 表示运行已挂起并在本次回答后恢复，客户端需重新接入该消息的事件流
+        返回 resumed=true 表示挂起的运行已请求恢复（自动化由调度器恢复），客户端需携带 resume_pending_id 重新接入该消息的事件流
       parameters:
       - description: 交互 ID（事件中的 pending_id）
         in: path
@@ -24091,6 +24101,10 @@ paths:
         in: query
         name: limit
         type: integer
+      - description: 上一页返回的 next_cursor
+        in: query
+        name: cursor
+        type: string
       - description: 只看未读
         in: query
         name: unread
@@ -24099,7 +24113,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: '{items, unread}'
+          description: '{items, pending, unread, read_count, next_cursor}'
           schema:
             additionalProperties: true
             type: object
@@ -24109,10 +24123,24 @@ paths:
       tags:
       - 通知
   /notifications/read:
+    delete:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 清理已读通知
+      tags:
+      - 通知
     post:
       consumes:
       - application/json
-      description: ids 为空时全部标记已读
+      description: ids 为空时将全部通知记录标为已读，不改变待处理事项
       parameters:
       - description: '{ids}'
         in: body
@@ -26420,6 +26448,10 @@ paths:
         name: message_id
         required: true
         type: string
+      - description: 等待此审批恢复后的事件流
+        in: query
+        name: resume_pending_id
+        type: string
       - default: handle
         description: 文件引用形式，public 返回可加载直链
         enum:
@@ -26437,6 +26469,10 @@ paths:
             type: string
         "404":
           description: 会话或消息不存在
+          schema:
+            $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
+        "409":
+          description: 审批恢复后的事件流尚未就绪
           schema:
             $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
       security:
