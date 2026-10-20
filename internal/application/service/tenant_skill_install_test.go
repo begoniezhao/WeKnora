@@ -2318,6 +2318,13 @@ func (r *installConfigRepo) SetCordon(context.Context, uint64, string, time.Time
 	return nil
 }
 func (r *installConfigRepo) ClearCordon(context.Context, uint64, string) error { return nil }
+func (r *installConfigRepo) RefreshCordon(context.Context, uint64, string, time.Time, time.Time) error {
+	return nil
+}
+
+func (r *installConfigRepo) ClearCordonIf(context.Context, uint64, string, time.Time) error {
+	return nil
+}
 
 type installSkillRepo struct {
 	mu        sync.Mutex
@@ -3418,7 +3425,9 @@ func (s *installModelService) GetChatModel(_ context.Context, modelID string) (c
 	}
 	return installChat{id: modelID}, nil
 }
+
 func (s *installModelService) GetVLMModel(context.Context, string) (vlm.VLM, error) { return nil, nil }
+
 func (s *installModelService) GetASRModel(context.Context, string) (asr.ASR, error) { return nil, nil }
 
 type installChat struct{ id string }
