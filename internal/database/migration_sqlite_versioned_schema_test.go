@@ -52,6 +52,7 @@ var versionedSQLiteTables = []string{
 // versionedSQLiteColumns maps each existing table to the columns that the
 // versioned migrations add and the SQLite baseline was missing.
 var versionedSQLiteColumns = map[string][]string{
+	"automation_runs":       {"execution_duration_ms"},                                     // 000048
 	"model_catalog_configs": {"version", "overlay", "history", "updated_by", "updated_at"}, // 000031
 	"memory_subjects":       {"extraction_state"},                                          // 000094
 	"memory_items":          {"replaces_id"},                                               // 000094
@@ -86,7 +87,7 @@ var versionedSQLiteColumns = map[string][]string{
 	}, // 000028
 }
 
-const expectedSQLiteMigrationVersion = 47
+const expectedSQLiteMigrationVersion = 48
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
@@ -262,19 +263,20 @@ func TestSQLiteSandboxAllocationMigrationRollsBack(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = m.Close() })
 
-	require.NoError(t, m.Steps(-1))
+	// Target the allocation migration even when newer migrations exist.
+	require.NoError(t, m.Migrate(46))
 	version, dirty = sqliteMigrationState(t, sqlDB)
-	require.Equal(t, expectedSQLiteMigrationVersion-1, version)
+	require.Equal(t, 46, version)
 	require.False(t, dirty)
 	for _, table := range []string{"session_sandbox_assignments", "sandbox_user_machines"} {
 		require.Falsef(t, sqliteTableExists(t, sqlDB, table), "down must drop %s", table)
 	}
 	require.True(t, sqliteColumnExists(t, sqlDB, "sessions", "owner_auth_source"),
-		"rolling back the allocation tables keeps the owner source of 000034")
+		"rolling back the allocation tables keeps the owner source of 000046")
 
-	require.NoError(t, m.Steps(1))
+	require.NoError(t, m.Migrate(47))
 	version, dirty = sqliteMigrationState(t, sqlDB)
-	require.Equal(t, expectedSQLiteMigrationVersion, version)
+	require.Equal(t, 47, version)
 	require.False(t, dirty)
 	require.True(t, sqliteTableExists(t, sqlDB, "session_sandbox_assignments"))
 	require.True(t, sqliteTableExists(t, sqlDB, "sandbox_user_machines"))
