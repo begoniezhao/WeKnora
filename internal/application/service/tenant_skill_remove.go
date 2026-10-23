@@ -414,8 +414,10 @@ func (s *TenantSkillService) finishRemoval(
 	// Read before the delete: past it the only record of what this row named is
 	// gone, and a pinned archive would be left behind with nothing to reclaim it.
 	var pinned []string
+	catalogID := ""
 	if row, err := s.skills.GetSkill(ctx, tenantID, configID, skillID); err == nil && row != nil {
 		pinned = installBundleRefs(row)
+		catalogID = row.CatalogID
 	}
 	if err := s.retrySkillBookkeeping(ctx, func() error {
 		return s.skills.DeleteSkill(ctx, tenantID, configID, skillID)
@@ -423,6 +425,8 @@ func (s *TenantSkillService) finishRemoval(
 		return fmt.Errorf("skill %s no longer exists in the image but its row remains: %w",
 			skillID, err)
 	}
+	s.releasePluginCatalogIfUninstalling(ctx, tenantID, catalogID)
+	s.notifySkillState(ctx, tenantID, catalogID)
 	// The definition's archive survives this; only an object no catalog and no
 	// other install names is reclaimed.
 	for _, ref := range pinned {

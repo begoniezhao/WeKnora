@@ -39,13 +39,15 @@
                 </div>
                 <h3 class="service-card__title" :title="service.name">{{ service.name }}</h3>
                 <span v-if="service.is_builtin" class="service-card__builtin">{{ $t('mcpSettings.builtin') }}</span>
+                <PluginOwnedTag v-if="service.plugin" :name="service.plugin.plugin_name" />
                 <div v-if="authStore.hasRole('admin')" class="service-card__actions">
                   <button type="button" class="service-card__icon-btn" :title="$t('common.edit')"
                     :aria-label="`${service.name} · ${$t('common.edit')}`" @click="handleEdit(service)">
                     <t-icon name="edit" size="14px" />
                   </button>
                   <button v-if="!service.is_builtin" type="button" class="service-card__icon-btn service-card__icon-btn--danger"
-                    :disabled="togglingIds.has(service.id)" :title="$t('common.delete')"
+                    :disabled="togglingIds.has(service.id) || Boolean(service.plugin)"
+                    :title="service.plugin ? $t('settings.plugins.managedByHint') : $t('common.delete')"
                     :aria-label="`${service.name} · ${$t('common.delete')}`" @click="handleDelete(service)">
                     <t-icon name="delete" size="14px" />
                   </button>
@@ -134,6 +136,7 @@ import {
   type MCPService
 } from '@/api/mcp-service'
 import McpServiceDialog from './components/McpServiceDialog.vue'
+import PluginOwnedTag from './components/PluginOwnedTag.vue'
 import { useConfirmDelete } from '@/components/settings/useConfirmDelete'
 import { useAuthStore } from '@/stores/auth'
 import { matchesResourceQuery } from '@/utils/resourceListSearch'
@@ -238,7 +241,7 @@ const handleToggleEnabled = async (service: MCPService) => {
 
 // Handle delete button click
 const handleDelete = (service: MCPService) => {
-  if (!authStore.hasRole('admin') || service.is_builtin || !service.id || togglingIds.value.has(service.id)) return
+  if (!authStore.hasRole('admin') || service.is_builtin || service.plugin || !service.id || togglingIds.value.has(service.id)) return
 
   confirmDelete({
     body: t('mcpSettings.deleteConfirmBody', { name: service.name || t('mcpSettings.unnamed') }),

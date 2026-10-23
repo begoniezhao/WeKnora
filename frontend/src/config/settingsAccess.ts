@@ -21,6 +21,9 @@ export const SETTINGS_SECTION_MIN_ROLE: Record<string, SettingsRoleKey> = {
   // Install writes a root shell into the sandbox image every session of
   // that config boots. Same Admin+ bar as the sandbox editor itself.
   skills: 'admin',
+  // A plugin creates workspace MCP services and skills, so it carries the
+  // stricter of their two bars.
+  plugins: 'admin',
   mcp: 'admin',
   system: 'viewer',
   userprofile: 'viewer',

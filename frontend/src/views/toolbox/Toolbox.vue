@@ -43,7 +43,8 @@
 
       <section v-if="selectedItem" class="toolbox-main" role="tabpanel">
         <div class="toolbox-panel">
-          <SkillSettings v-if="selectedItem.key === 'skills'" ref="panel" :key="sandboxId"
+          <PluginSettings v-if="selectedItem.key === 'plugins'" ref="panel" @count="counts.plugins = $event" />
+          <SkillSettings v-else-if="selectedItem.key === 'skills'" ref="panel" :key="sandboxId"
             :initial-sandbox-id="sandboxId" @count="counts.skills = $event" />
           <McpSettings v-else-if="selectedItem.key === 'mcp'" ref="panel" @count="counts.mcp = $event" />
           <BrowserConnectionSettings v-else-if="selectedItem.key === 'browserconnection'" />
@@ -64,6 +65,8 @@ import { useBrowserConnectionStore } from '@/stores/browserConnection'
 import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
 import { listSkillCatalog } from '@/api/skill'
 import { listMCPServices } from '@/api/mcp-service'
+import { listPluginMarketplaces } from '@/api/plugin'
+import { installedPluginCount } from '@/utils/pluginMarketplace'
 import {
   TOOLBOX_ITEMS,
   canAccessToolboxSection,
@@ -73,6 +76,7 @@ import {
 import ResourceIcon from '@/components/icons/ResourceIcon.vue'
 import BrowserIcon from '@/components/icons/BrowserIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import PluginSettings from '@/views/settings/PluginSettings.vue'
 import SkillSettings from '@/views/settings/SkillSettings.vue'
 import McpSettings from '@/views/settings/McpSettings.vue'
 import BrowserConnectionSettings from '@/views/settings/BrowserConnectionSettings.vue'
@@ -115,6 +119,7 @@ watch([selectedItem, visibleItems], () => {
 
 // Tab badges for tools that are not open; the open panel keeps its own badge current.
 const summaries: Record<ToolboxSection, () => Promise<void>> = {
+  plugins: async () => { counts.plugins = installedPluginCount((await listPluginMarketplaces())?.data || []) },
   skills: async () => { counts.skills = (await listSkillCatalog())?.data?.length ?? 0 },
   mcp: async () => { counts.mcp = (await listMCPServices()).length },
   browserconnection: async () => { if (!browserConnection.loaded) await browserConnection.refresh() },

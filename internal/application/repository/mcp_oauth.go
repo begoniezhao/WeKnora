@@ -63,6 +63,25 @@ func (r *mcpOAuthRepository) GetToken(
 	}, serviceID)
 }
 
+// ServiceHasToken reports whether any principal has stored an access token
+// for the service. Plugin install status is tenant-wide, so the first
+// successful authorization is what moves the install out of needs_oauth.
+func (r *mcpOAuthRepository) ServiceHasToken(ctx context.Context, tenantID uint64, serviceID string) (bool, error) {
+	if serviceID == "" {
+		return false, nil
+	}
+	var id string
+	err := r.db.WithContext(ctx).Model(&types.MCPOAuthToken{}).
+		Select("id").
+		Where("tenant_id = ? AND service_id = ? AND access_token <> ''", tenantID, serviceID).
+		Limit(1).
+		Scan(&id).Error
+	if err != nil {
+		return false, err
+	}
+	return id != "", nil
+}
+
 func (r *mcpOAuthRepository) GetTokenForPrincipal(
 	ctx context.Context, tenantID uint64, principal types.Principal, serviceID string,
 ) (*types.MCPOAuthToken, error) {

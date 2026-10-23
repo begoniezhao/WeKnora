@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
@@ -30,6 +31,7 @@ type MCPOAuthHandler struct {
 	mcpManager *mcp.MCPManager
 	svc        interfaces.MCPServiceService
 	gate       *approval.Gate
+	plugins    *service.PluginService
 }
 
 // NewMCPOAuthHandler constructs the handler.
@@ -38,8 +40,16 @@ func NewMCPOAuthHandler(
 	mcpManager *mcp.MCPManager,
 	svc interfaces.MCPServiceService,
 	gate *approval.Gate,
+	plugins *service.PluginService,
 ) *MCPOAuthHandler {
-	return &MCPOAuthHandler{oauth: oauth, mcpManager: mcpManager, svc: svc, gate: gate}
+	return &MCPOAuthHandler{oauth: oauth, mcpManager: mcpManager, svc: svc, gate: gate, plugins: plugins}
+}
+
+func (h *MCPOAuthHandler) notePluginOAuth(ctx context.Context, tenantID uint64, serviceID string) {
+	if h == nil || h.plugins == nil || tenantID == 0 || serviceID == "" {
+		return
+	}
+	h.plugins.NoteMCPAuthorized(ctx, tenantID, serviceID)
 }
 
 func mcpOAuthPrincipalsFromContext(ctx *gin.Context) (tokenPrincipal types.Principal, gateUserID string) {
@@ -218,6 +228,7 @@ func (h *MCPOAuthHandler) AssertionGrant(c *gin.Context) {
 		_ = h.mcpManager.CloseClientsAfterAuthorization(cleanupCtx, tenantID, serviceID, principal)
 		cancel()
 	}
+	h.notePluginOAuth(context.WithoutCancel(ctx), tenantID, serviceID)
 
 	status, err := h.oauth.AuthorizationStatus(ctx, tenantID, principal, serviceID)
 	if err != nil {
@@ -279,6 +290,7 @@ func (h *MCPOAuthHandler) Callback(c *gin.Context) {
 		)
 		cancel()
 	}
+	h.notePluginOAuth(context.WithoutCancel(ctx), result.TenantID, result.ServiceID)
 	c.Redirect(http.StatusFound, frontendRedirect+"#mcp_oauth_result=success")
 }
 
@@ -362,6 +374,7 @@ func (h *MCPOAuthHandler) Revoke(c *gin.Context) {
 	if h.mcpManager != nil {
 		_ = h.mcpManager.CloseClientForPrincipal(serviceID, principal)
 	}
+	h.notePluginOAuth(context.WithoutCancel(ctx), tenantID, serviceID)
 	c.Status(http.StatusNoContent)
 }
 

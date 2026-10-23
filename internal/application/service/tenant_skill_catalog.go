@@ -64,6 +64,8 @@ type SkillCatalogView struct {
 	Installations []SkillCatalogInstallView `json:"installations"`
 	// InstalledOn lists the sandbox config ids of Installations.
 	InstalledOn []string `json:"installed_on" extensions:"x-agent"`
+	// Plugin attribution info when managed by a plugin
+	Plugin *types.PluginInfoForResource `json:"plugin,omitempty"`
 }
 
 // ListCatalog returns every workspace skill definition and which sandbox
@@ -113,13 +115,23 @@ func (s *TenantSkillService) ListCatalog(
 	out := make([]SkillCatalogView, 0, len(catalogs)+len(unattached))
 	seenName := make(map[string]struct{}, len(catalogs))
 	seenCatalog := make(map[string]struct{}, len(catalogs))
+
+	var pluginAttributions map[string]*types.PluginInfoForResource
+	if s.pluginLookup != nil {
+		pluginAttributions, _ = s.pluginLookup.ListPluginResourcesByKind(ctx, tenantID, types.PluginResourceKindSkillCatalog)
+	}
+
 	for _, cat := range catalogs {
 		if cat == nil {
 			continue
 		}
 		seenName[cat.Name] = struct{}{}
 		seenCatalog[cat.ID] = struct{}{}
-		out = append(out, catalogView(cat, byCatalog[cat.ID], configByID))
+		view := catalogView(cat, byCatalog[cat.ID], configByID)
+		if pluginAttributions != nil && pluginAttributions[cat.ID] != nil {
+			view.Plugin = pluginAttributions[cat.ID]
+		}
+		out = append(out, view)
 	}
 	// Installs whose catalog row was deleted (or never existed) would otherwise
 	// vanish: they are not unattached (catalog_id is set) and they are not
@@ -291,11 +303,29 @@ func (s *TenantSkillService) InstallCatalogToConfigs(
 func (s *TenantSkillService) DeleteCatalog(
 	ctx context.Context, tenantID uint64, catalogID string,
 ) error {
+	if s.pluginLookup != nil {
+		info, err := s.pluginLookup.LookupPluginByResource(ctx, tenantID, types.PluginResourceKindSkillCatalog, catalogID)
+		if err != nil {
+			return fmt.Errorf("failed to check plugin ownership: %w", err)
+		}
+		if info != nil {
+			return apperrors.NewConflictError(fmt.Sprintf("该项由插件 %s 管理，请卸载插件", info.PluginName))
+		}
+	}
+	return s.DeleteCatalogUnguarded(ctx, tenantID, catalogID)
+}
+
+// DeleteCatalogUnguarded removes a definition bypassing the plugin ownership check.
+func (s *TenantSkillService) DeleteCatalogUnguarded(
+	ctx context.Context, tenantID uint64, catalogID string,
+) error {
 	catalog, err := s.skills.GetCatalog(ctx, tenantID, catalogID)
 	if err != nil {
 		return err
 	}
 	if catalog == nil {
+		// The definition is already gone. Drop a ledger row that still names it.
+		s.releasePluginResource(ctx, tenantID, catalogID)
 		return apperrors.NewNotFoundError("skill not found")
 	}
 	installs, err := s.skills.ListSkillsByCatalog(ctx, tenantID, catalogID)
@@ -313,10 +343,61 @@ func (s *TenantSkillService) DeleteCatalog(
 	if err := s.skills.DeleteCatalog(ctx, tenantID, catalogID); err != nil {
 		return err
 	}
+	s.releasePluginResource(ctx, tenantID, catalogID)
 	if ref != "" {
 		s.deleteBundleBestEffort(ctx, tenantID, ref)
 	}
 	return nil
+}
+
+// releasePluginResource drops the plugin binding for a catalog that was just
+// deleted. No binding is a no-op. The install row goes with the last binding.
+func (s *TenantSkillService) releasePluginResource(ctx context.Context, tenantID uint64, catalogID string) {
+	if s.pluginLookup == nil {
+		return
+	}
+	if err := s.pluginLookup.ReleaseOwnedResource(ctx, tenantID, types.PluginResourceKindSkillCatalog, catalogID); err != nil {
+		logger.Warnf(ctx, "[plugin] release binding for catalog %s: %v", catalogID, err)
+	}
+}
+
+// releasePluginCatalogIfUninstalling deletes a plugin catalog once its last
+// sandbox install is gone and the plugin itself is uninstalling. A catalog
+// the user removed from a sandbox without uninstalling the plugin stays.
+func (s *TenantSkillService) releasePluginCatalogIfUninstalling(ctx context.Context, tenantID uint64, catalogID string) {
+	if s.pluginLookup == nil || strings.TrimSpace(catalogID) == "" {
+		return
+	}
+	left, err := s.skills.ListSkillsByCatalog(ctx, tenantID, catalogID)
+	if err != nil {
+		logger.Warnf(ctx, "[plugin] list skills for catalog %s: %v", catalogID, err)
+		return
+	}
+	if len(left) > 0 {
+		return
+	}
+	status, err := s.pluginLookup.OwningInstallStatus(ctx, tenantID, types.PluginResourceKindSkillCatalog, catalogID)
+	if err != nil {
+		logger.Warnf(ctx, "[plugin] install status for catalog %s: %v", catalogID, err)
+		return
+	}
+	if status != types.PluginStatusRemoving {
+		return
+	}
+	if err := s.DeleteCatalogUnguarded(ctx, tenantID, catalogID); err != nil {
+		var appErr *apperrors.AppError
+		if errors.As(err, &appErr) && appErr.Code == apperrors.ErrNotFound {
+			return
+		}
+		logger.Warnf(ctx, "[plugin] delete catalog %s after uninstall: %v", catalogID, err)
+	}
+}
+
+// UpsertCatalogFromBundle registers or updates a catalog entry from a validated SkillBundle.
+func (s *TenantSkillService) UpsertCatalogFromBundle(
+	ctx context.Context, tenantID uint64, bundle *SkillBundle, archive []byte, requireStore bool,
+) (*types.TenantSkillCatalogEntity, error) {
+	return s.upsertCatalogFromBundle(ctx, tenantID, bundle, archive, requireStore)
 }
 
 func (s *TenantSkillService) upsertCatalogFromBundle(

@@ -7,6 +7,7 @@ import test from 'node:test'
 import { compileScript, parse } from '@vue/compiler-sfc'
 import ts from 'typescript'
 import { createRenderer, h, nextTick, reactive, ref } from 'vue'
+import * as mcpOAuthPopup from '../../../utils/mcpOAuthPopup'
 
 const require = createRequire(import.meta.url)
 const filename = fileURLToPath(new URL('./McpServiceDialog.vue', import.meta.url))
@@ -45,6 +46,7 @@ function fixture(generate: () => Promise<string> = async () => 'Query logs by mo
         },
         ...oauthApi,
       }
+      if (name === '@/utils/mcpOAuthPopup') return mcpOAuthPopup
       return { default: {} }
     },
     URL, console,

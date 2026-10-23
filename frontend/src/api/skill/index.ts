@@ -1,5 +1,6 @@
 import { del, get, post, postUpload } from "../../utils/request";
 import type { ConfigSkillFileContent, ConfigSkillFileEntry } from "../system";
+import type { PluginOwnership } from "../plugin";
 
 // Skill信息
 export interface SkillInfo {
@@ -32,6 +33,8 @@ export interface SkillCatalogItem {
   created_at: string;
   updated_at: string;
   installations: SkillCatalogInstall[];
+  // Set when a plugin install owns this skill; it is removed by uninstalling the plugin.
+  plugin?: PluginOwnership;
 }
 
 export interface SkillCatalogRegisterResult {

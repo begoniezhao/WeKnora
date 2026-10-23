@@ -68,6 +68,7 @@
                 <div class="skill-card__heading">
                   <h3 class="skill-card__title" :title="item.name">{{ item.name }}</h3>
                   <span v-if="item.version" class="skill-card__type">{{ item.version }}</span>
+                  <PluginOwnedTag v-if="item.plugin" :name="item.plugin.plugin_name" />
                 </div>
                 <div class="skill-card__actions">
                   <button type="button" class="skill-card__icon-btn" :title="$t('settings.sandbox.skillFiles')"
@@ -388,6 +389,7 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { AddIcon, DeleteIcon, FolderIcon } from 'tdesign-icons-vue-next'
 import { useI18n } from 'vue-i18n'
 import SandboxSkillsPanel from '@/components/SandboxSkillsPanel.vue'
+import PluginOwnedTag from './components/PluginOwnedTag.vue'
 import SkillFilesDrawer from '@/components/SkillFilesDrawer.vue'
 import SandboxBackendBadge from '@/components/settings/SandboxBackendBadge.vue'
 import SettingDrawer from '@/components/settings/SettingDrawer.vue'
@@ -584,7 +586,7 @@ function liveInstalls(item: SkillCatalogItem): SkillCatalogInstall[] {
 }
 
 function canDelete(item: SkillCatalogItem): boolean {
-  return liveInstalls(item).length === 0
+  return !item.plugin && liveInstalls(item).length === 0
 }
 
 function targetsFor(item: SkillCatalogItem): SandboxConfigRecord[] {

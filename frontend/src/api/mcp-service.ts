@@ -1,4 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
+import type { PluginOwnership } from './plugin'
 
 export interface MCPService {
   id: string
@@ -58,6 +59,8 @@ export interface MCPService {
     stale: boolean
     synced_at: string
   }
+  // Set when a plugin install owns this service; it is removed by uninstalling the plugin.
+  plugin?: PluginOwnership
 }
 
 export interface MCPTool {

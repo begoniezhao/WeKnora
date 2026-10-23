@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -20,18 +21,22 @@ type mcpServiceService struct {
 	mcpServiceRepo interfaces.MCPServiceRepository
 	mcpManager     *mcp.MCPManager
 	oauthRepo      interfaces.MCPOAuthRepository
+	pluginLookup   interfaces.PluginOwnershipLookup
 }
 
-// NewMCPServiceService creates a new MCP service service
+// NewMCPServiceService creates a new MCP service service. pluginLookup guards
+// plugin-owned services against direct deletion; nil disables the guard.
 func NewMCPServiceService(
 	mcpServiceRepo interfaces.MCPServiceRepository,
 	mcpManager *mcp.MCPManager,
 	oauthRepo interfaces.MCPOAuthRepository,
+	pluginLookup interfaces.PluginOwnershipLookup,
 ) interfaces.MCPServiceService {
 	return &mcpServiceService{
 		mcpServiceRepo: mcpServiceRepo,
 		mcpManager:     mcpManager,
 		oauthRepo:      oauthRepo,
+		pluginLookup:   pluginLookup,
 	}
 }
 
@@ -343,14 +348,30 @@ func (s *mcpServiceService) UpdateMCPService(
 	return nil
 }
 
-// DeleteMCPService deletes an MCP service
+// DeleteMCPService deletes an MCP service with a guard against deleting plugin-owned services.
 func (s *mcpServiceService) DeleteMCPService(ctx context.Context, tenantID uint64, id string) error {
+	if s.pluginLookup != nil {
+		info, err := s.pluginLookup.LookupPluginByResource(ctx, tenantID, types.PluginResourceKindMCPService, id)
+		if err != nil {
+			return fmt.Errorf("failed to check plugin ownership: %w", err)
+		}
+		if info != nil {
+			return apperrors.NewConflictError(fmt.Sprintf("该项由插件 %s 管理，请卸载插件", info.PluginName))
+		}
+	}
+	return s.DeleteMCPServiceUnguarded(ctx, tenantID, id)
+}
+
+// DeleteMCPServiceUnguarded deletes an MCP service without checking plugin ownership.
+func (s *mcpServiceService) DeleteMCPServiceUnguarded(ctx context.Context, tenantID uint64, id string) error {
 	// Check if service exists
 	existing, err := s.mcpServiceRepo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		return fmt.Errorf("failed to get MCP service: %w", err)
 	}
 	if existing == nil {
+		// The service is already gone. Drop a ledger row that still names it.
+		s.releasePluginResource(ctx, tenantID, types.PluginResourceKindMCPService, id)
 		return fmt.Errorf("MCP service not found")
 	}
 
@@ -367,8 +388,20 @@ func (s *mcpServiceService) DeleteMCPService(ctx context.Context, tenantID uint6
 		return fmt.Errorf("failed to delete MCP service: %w", err)
 	}
 
+	s.releasePluginResource(ctx, tenantID, types.PluginResourceKindMCPService, id)
 	logger.GetLogger(ctx).Infof("MCP service deleted: %s (ID: %s)", secutils.SanitizeForLog(existing.Name), id)
 	return nil
+}
+
+// releasePluginResource drops the plugin binding for a resource that was just
+// deleted. No binding is a no-op. The install row goes with the last binding.
+func (s *mcpServiceService) releasePluginResource(ctx context.Context, tenantID uint64, kind, resourceID string) {
+	if s.pluginLookup == nil {
+		return
+	}
+	if err := s.pluginLookup.ReleaseOwnedResource(ctx, tenantID, kind, resourceID); err != nil {
+		logger.GetLogger(ctx).Warnf("release plugin binding for %s %s: %v", kind, resourceID, err)
+	}
 }
 
 // TestMCPService tests the connection to an MCP service and returns available tools/resources

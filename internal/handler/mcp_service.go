@@ -38,6 +38,9 @@ type MCPServiceHandler struct {
 	scheduledPrompt func(context.Context, *types.AgentPrompt) bool
 	// grants are the callers' remembered agent approvals.
 	grants interfaces.AgentGrantRepository
+	// pluginLookup marks services a plugin install owns. Nil leaves the
+	// listing unmarked.
+	pluginLookup interfaces.PluginOwnershipLookup
 }
 
 // RunResumer continues an agent run that ended suspended on prompt, now
@@ -54,13 +57,17 @@ func (h *MCPServiceHandler) SetScheduledPromptRouter(f func(context.Context, *ty
 	h.scheduledPrompt = f
 }
 
-// NewMCPServiceHandler creates a new MCP service handler
+// NewMCPServiceHandler creates a new MCP service handler. grants and
+// pluginLookup may be nil; without them the grant routes and plugin badges
+// stay empty.
 func NewMCPServiceHandler(
 	mcpServiceService interfaces.MCPServiceService,
 	mcpToolApprovalService interfaces.MCPToolApprovalService,
 	toolApprovalGate *approval.Gate,
 	modelService interfaces.ModelService,
 	agents access.SharedAgentLookup,
+	grants interfaces.AgentGrantRepository,
+	pluginLookup interfaces.PluginOwnershipLookup,
 ) *MCPServiceHandler {
 	return &MCPServiceHandler{
 		mcpServiceService:      mcpServiceService,
@@ -68,6 +75,8 @@ func NewMCPServiceHandler(
 		toolApprovalGate:       toolApprovalGate,
 		modelService:           modelService,
 		agents:                 agents,
+		grants:                 grants,
+		pluginLookup:           pluginLookup,
 	}
 }
 
@@ -86,6 +95,18 @@ func (h *MCPServiceHandler) mcpServiceResponses(
 		return resp
 	}
 	dto.AttachMCPCatalogs(resp, services, summaries)
+
+	if h.pluginLookup != nil {
+		pluginAttributions, _ := h.pluginLookup.ListPluginResourcesByKind(ctx, tenantID, types.PluginResourceKindMCPService)
+		if pluginAttributions != nil {
+			for _, r := range resp {
+				if r != nil && pluginAttributions[r.ID] != nil {
+					r.Plugin = pluginAttributions[r.ID]
+				}
+			}
+		}
+	}
+
 	return resp
 }
 
