@@ -1,18 +1,22 @@
 <template>
+  <!-- Floating panels must escape the app root's stacking context to sit above body-attached drawers. -->
+  <Teleport to="body" :disabled="effectiveLayout === 'docked'">
   <!-- Hidden with a class, not v-if, so a reply keeps streaming while closed. -->
-  <aside class="assistant-panel" :class="[`is-${effectiveLayout}`, { 'is-open': assistant.visible, 'is-resizing': resizing }]"
-    :style="{ width: `${panelWidth}px` }" role="complementary" :aria-label="assistantName"
+  <aside ref="panelElement" class="assistant-panel"
+    :class="[`is-${effectiveLayout}`, { 'is-open': assistant.visible, 'is-resizing': resizing, 'is-dragging': dragging }]"
+    :style="[{ width: `${panelWidth}px` }, effectiveLayout === 'floating' ? positionStyle : {}]" role="complementary" :aria-label="assistantName"
     :aria-hidden="!assistant.visible">
     <PanelResizeHandle edge="left" :label="t('assistant.resize')" :value="panelWidth"
       :min="ASSISTANT_PANEL_MIN_WIDTH" :max="ASSISTANT_PANEL_MAX_WIDTH"
       @start="startResize" @resize="resize" @end="resizing = false" />
 
-    <header class="assistant-panel__header">
+    <header class="assistant-panel__header" @pointerdown="startPanelDrag" @pointermove="moveDrag"
+      @pointerup="stopDrag" @pointercancel="stopDrag" @lostpointercapture="stopDrag">
       <ChildAgentTabBar header-mode :tabs="childTabs.tabs.value"
         :active-id="childTabs.activeId.value" :attention="childTabs.attention.value"
         @select="selectConversationTab" @close="childTabs.close">
         <template #parent>
-          <span class="assistant-panel__header-icon" aria-hidden="true"><t-icon name="compass" /></span>
+          <span class="assistant-panel__header-icon" aria-hidden="true"><ResourceIcon type="assistant" :size="16" /></span>
           <span class="assistant-panel__title">{{ assistantName }}</span>
         </template>
       </ChildAgentTabBar>
@@ -66,6 +70,20 @@
         <t-loading v-else-if="historyLoading" size="small" />
       </div>
       <div v-show="!showHistory" class="assistant-panel__conversation">
+        <section v-if="assistant.actionSuggestions && assistant.sessionId" class="assistant-suggestions"
+          :aria-label="assistant.actionSuggestions.label">
+          <div class="assistant-suggestions__header">
+            <h3>{{ assistant.actionSuggestions.label }}</h3>
+            <button type="button" class="assistant-panel__action" :aria-label="t('common.close')"
+              @click="assistant.clearActionSuggestions()"><t-icon name="close" size="14px" /></button>
+          </div>
+          <p>{{ t('assistant.chooseAction') }}</p>
+          <div class="assistant-starters">
+            <button v-for="action in assistant.actionSuggestions.actions" :key="action.key" type="button"
+              class="assistant-starter" :disabled="starting || action.disabled"
+              @click="assistant.askSuggestedAction(action.key)">{{ action.label }}</button>
+          </div>
+        </section>
         <ChatView v-if="assistant.sessionId && readySessionId === assistant.sessionId"
           :key="assistant.sessionId" :session_id="assistant.sessionId"
           :agent-id="BUILTIN_WEKNORA_ASSISTANT_ID" :embedded-mode="true" :initial-query="initialQuery"
@@ -92,11 +110,16 @@
         <div v-else class="assistant-welcome">
           <div class="assistant-welcome-body">
             <div class="assistant-welcome-icon">
-              <t-icon name="compass" size="22px" />
+              <ResourceIcon type="assistant" :size="22" />
             </div>
-            <h3 class="assistant-welcome-title">{{ t('assistant.welcomeTitle') }}</h3>
-            <p class="assistant-welcome-desc">{{ welcomeDescription }}</p>
-            <div class="assistant-starters">
+            <h3 class="assistant-welcome-title">{{ assistant.actionSuggestions?.label || t('assistant.welcomeTitle') }}</h3>
+            <p class="assistant-welcome-desc">{{ assistant.actionSuggestions ? t('assistant.chooseAction') : welcomeDescription }}</p>
+            <div v-if="assistant.actionSuggestions" class="assistant-starters">
+              <button v-for="action in assistant.actionSuggestions.actions" :key="action.key" type="button"
+                class="assistant-starter" :disabled="starting || action.disabled"
+                @click="assistant.askSuggestedAction(action.key)">{{ action.label }}</button>
+            </div>
+            <div v-else class="assistant-starters">
               <button v-for="starter in starters" :key="starter" type="button" class="assistant-starter"
                 :disabled="starting" @click="startConversation(starter)">
                 {{ starter }}
@@ -122,6 +145,7 @@
       </div>
     </div>
   </aside>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -131,8 +155,10 @@ import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import ChatView from '@/views/chat/index.vue'
 import ChildAgentTabBar from '@/views/chat/components/ChildAgentTabBar.vue'
 import { createChildAgentTabs, childAgentTabsKey } from '@/composables/useChildAgentTabs'
+import { useFloatingPreviewDrag } from '@/composables/useFloatingPreviewDrag'
 import InputField from '@/components/Input-field.vue'
 import PanelResizeHandle from '@/components/PanelResizeHandle.vue'
+import ResourceIcon from '@/components/icons/ResourceIcon.vue'
 import AssistantContextMenu from './AssistantContextMenu.vue'
 import AssistantSelectionChip from './AssistantSelectionChip.vue'
 import AssistantAccessPicker from './AssistantAccessPicker.vue'
@@ -173,6 +199,15 @@ const onViewportResize = () => { viewportWidth.value = window.innerWidth }
 const canDock = computed(() => viewportWidth.value >= DOCK_MIN_VIEWPORT)
 const effectiveLayout = computed(() => assistant.layout === 'docked' && canDock.value ? 'docked' : 'floating')
 const docked = computed(() => assistant.visible && effectiveLayout.value === 'docked')
+const panelElement = ref<HTMLElement | null>(null)
+const { positionStyle, dragging, startDrag, moveDrag, stopDrag } = useFloatingPreviewDrag(
+  computed(() => assistant.visible && effectiveLayout.value === 'floating' ? panelElement.value : null), 'viewport',
+)
+
+function startPanelDrag(event: PointerEvent) {
+  if (effectiveLayout.value !== 'floating' || (event.target as Element).closest('button, a, input, select, textarea, [role="button"], [role="tab"]')) return
+  startDrag(event)
+}
 
 const panelWidth = computed(() => {
   const room = effectiveLayout.value === 'docked'
@@ -238,6 +273,7 @@ const starters = computed(() => {
 // Page context is a hint, not an explicit retrieval selection. The backend
 // validates it against the agent's scope; only user selections narrow that scope.
 const hostScope = () => {
+  assistant.clearActionSuggestions()
   const context = assistant.contextAttached ? assistant.pageContext : null
   const title = assistant.contextAttached ? assistant.pageTitle : ''
   const view = assistant.contextAttached ? assistant.pageView : ''
@@ -261,8 +297,10 @@ const hostScope = () => {
 
 const welcomeInput = ref<{ focusInput?: () => void } | null>(null)
 watch(() => assistant.focusRequest, () => {
+  showHistory.value = false
+  childTabs.select('')
   if (!assistant.sessionId) welcomeInput.value?.focusInput?.()
-})
+}, { flush: 'post' })
 
 async function startConversation(query: string, focus?: AssistantOpenRequest['focus']) {
   const text = query.trim()
@@ -453,20 +491,27 @@ onUnmounted(() => {
     border-left: 1px solid var(--td-component-stroke);
   }
 
-  // Above page drawers (1500), below dialogs and the settings shell; no mask.
+  // Above document/model drawers (2100/2300), below confirmation dialogs (2500).
   &.is-floating {
     position: fixed;
-    top: 12px;
     right: 12px;
     bottom: 12px;
-    z-index: 1600;
+    height: min(720px, calc(100% - 24px));
+    max-width: calc(100% - 24px);
+    z-index: 2400;
     border: 1px solid var(--td-component-stroke);
     border-radius: var(--app-radius-lg);
     box-shadow: var(--td-shadow-3);
     overflow: hidden;
 
-    &.is-open {
-      animation: assistant-panel-in var(--app-motion-base) cubic-bezier(0.22, 0.61, 0.36, 1);
+    .assistant-panel__header {
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+    }
+
+    &.is-dragging .assistant-panel__header {
+      cursor: grabbing;
     }
   }
 
@@ -476,18 +521,6 @@ onUnmounted(() => {
     .assistant-panel__body {
       pointer-events: none;
     }
-  }
-}
-
-@keyframes assistant-panel-in {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 
@@ -715,14 +748,170 @@ onUnmounted(() => {
   }
 }
 
+.assistant-suggestions {
+  flex-shrink: 0;
+  padding: 16px;
+  border-bottom: 1px solid var(--td-component-stroke);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    h3 {
+      margin: 0;
+      font-size: var(--app-text-base);
+      font-weight: 500;
+      color: var(--td-text-color-primary);
+    }
+  }
+
+  p {
+    margin: 4px 0 0;
+    font-size: var(--app-text-sm);
+    line-height: 1.6;
+    color: var(--td-text-color-secondary);
+  }
+
+  .assistant-starters {
+    justify-content: flex-start;
+  }
+}
+
 // Same inset as the composer inside a conversation.
 .assistant-welcome-composer {
+  margin-top: auto;
   flex-shrink: 0;
   padding: 12px 16px max(8px, env(safe-area-inset-bottom));
+}
+
+// Opening only changes presentation; the mounted conversation keeps streaming.
+@media (prefers-reduced-motion: no-preference) {
+  .assistant-panel.is-open {
+    animation: assistant-panel-in var(--app-motion-slow) cubic-bezier(0.16, 1, 0.3, 1);
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      padding: 1px;
+      border-radius: inherit;
+      pointer-events: none;
+      opacity: 0;
+      background: conic-gradient(from var(--assistant-border-angle),
+        transparent 0deg 260deg,
+        color-mix(in srgb, var(--td-brand-color) 15%, transparent) 300deg,
+        color-mix(in srgb, var(--td-brand-color) 70%, transparent) 340deg,
+        var(--td-brand-color) 355deg,
+        transparent 360deg);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: assistant-panel-glow calc(var(--app-motion-slow) * 6) linear var(--app-motion-instant);
+    }
+
+    &::before {
+      padding: 4px;
+      filter: blur(3px);
+    }
+
+    .assistant-panel__header-icon,
+    .assistant-welcome-icon {
+      animation: assistant-icon-in calc(var(--app-motion-base) + var(--app-motion-slow)) ease-out backwards;
+    }
+
+    .assistant-welcome-icon {
+      animation-delay: var(--app-motion-instant);
+    }
+
+    .assistant-welcome-title,
+    .assistant-welcome-desc,
+    .assistant-welcome-body > .assistant-starters,
+    .assistant-welcome-composer,
+    .assistant-suggestions {
+      animation: assistant-content-in var(--app-motion-slow) cubic-bezier(0.16, 1, 0.3, 1) backwards;
+      animation-delay: var(--app-motion-instant);
+    }
+
+    .assistant-welcome-desc {
+      animation-delay: var(--app-motion-fast);
+    }
+
+    .assistant-welcome-body > .assistant-starters {
+      animation-delay: var(--app-motion-base);
+    }
+  }
+}
+
+@keyframes assistant-panel-glow {
+  from {
+    --assistant-border-angle: 0deg;
+    opacity: 0;
+  }
+
+  12%, 80% { opacity: 0.65; }
+
+  to {
+    --assistant-border-angle: 360deg;
+    opacity: 0;
+  }
+}
+
+@keyframes assistant-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes assistant-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes assistant-icon-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+
+  45% {
+    opacity: 1;
+    transform: scale(1.04);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--td-brand-color) 22%, transparent);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+    box-shadow: none;
+  }
 }
 </style>
 
 <style lang="less">
+@property --assistant-border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 html.has-assistant-dock {
   .t-drawer:not(.t-drawer--attach):not(.chat-artifacts-drawer),
   .t-dialog__ctx--fixed .t-dialog__mask,

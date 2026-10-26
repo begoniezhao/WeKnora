@@ -15,6 +15,7 @@ const panelScript = compileScript(descriptor, { id: 'assistant-panel-test', inli
 const storeScript = readFileSync(new URL('../../stores/assistant.ts', import.meta.url), 'utf8')
 const groupingScript = readFileSync(new URL('../sessionGrouping.ts', import.meta.url), 'utf8')
 const assistantApiScript = readFileSync(new URL('../../api/assistant.ts', import.meta.url), 'utf8')
+const dragScript = readFileSync(new URL('../../composables/useFloatingPreviewDrag.ts', import.meta.url), 'utf8')
 
 function evaluate(source: string, dependencies: Record<string, unknown>, globals = {}) {
   const exports: any = {}
@@ -87,6 +88,11 @@ async function fixture(
       return () => null
     },
   })
+  const viewport = { innerWidth: 1440, innerHeight: 1000, addEventListener() {}, removeEventListener() {} }
+  const floatingDrag = evaluate(dragScript, { vue }, {
+    window: viewport,
+    ResizeObserver: class { observe() {} disconnect() {} },
+  })
   const component = evaluate(panelScript, {
     vue,
     'vue-i18n': { useI18n: () => ({ t: (key: string) => key }) },
@@ -97,8 +103,10 @@ async function fixture(
     '@/views/chat/index.vue': ChatView,
     '@/views/chat/components/ChildAgentTabBar.vue': emptyComponent,
     '@/composables/useChildAgentTabs': childAgentTabs,
+    '@/composables/useFloatingPreviewDrag': floatingDrag,
     '@/components/Input-field.vue': emptyComponent,
     '@/components/PanelResizeHandle.vue': emptyComponent,
+    '@/components/icons/ResourceIcon.vue': emptyComponent,
     './AssistantContextMenu.vue': emptyComponent,
     './AssistantSelectionChip.vue': emptyComponent,
     './AssistantAccessPicker.vue': emptyComponent,
@@ -126,7 +134,7 @@ async function fixture(
         deleted.push(id)
       },
     },
-  }, { window: { addEventListener() {}, removeEventListener() {} } }).default
+  }, { window: viewport }).default
   type HostNode = { children: HostNode[]; parent?: HostNode; tag?: string; props: Record<string, any>; style: Record<string, any>; text?: string }
   const node = (tag?: string): HostNode => ({ children: [], tag, props: {}, style: {} })
   const remove = (child: HostNode) => {
@@ -145,6 +153,7 @@ async function fixture(
     patchProp(node, key, _prev, next) { node.props[key] = next },
     parentNode: child => child.parent ?? null,
     nextSibling: child => child.parent?.children[child.parent.children.indexOf(child) + 1] ?? null,
+    querySelector: selector => selector === 'body' ? body : null,
   })
   const app = renderer.createApp(component)
   app.use(storeRoot)
@@ -153,7 +162,10 @@ async function fixture(
   app.component('t-loading', emptyComponent)
   app.component('t-tooltip', vue.defineComponent({ inheritAttrs: false, setup: (_, { slots }) => () => slots.default?.() }))
   app.component('t-button', vue.defineComponent({ setup: (_, { slots }) => () => vue.h('button', slots.default?.()) }))
-  const root = node()
+  const body = node('body')
+  const root = node('app-root')
+  root.parent = body
+  body.children.push(root)
   app.mount(root)
   const findAll = (predicate: (node: HostNode) => boolean): HostNode[] => {
     const found: HostNode[] = []
@@ -161,7 +173,7 @@ async function fixture(
       if (predicate(node)) found.push(node)
       node.children.forEach(walk)
     }
-    walk(root)
+    walk(body)
     return found
   }
   const click = async (label: string) => {
@@ -185,6 +197,156 @@ test('layout and width persist, with the width kept within bounds', async () => 
     f.assistant.setWidth(12)
     assert.equal(f.assistant.width, 360)
     assert.equal(f.localStorage.getItem('weknora:assistant-width'), '360')
+  } finally { f.close() }
+})
+
+test('floating panels escape the app root without remounting the conversation', async () => {
+  const f = await fixture()
+  try {
+    f.assistant.open({ query: 'Explain this connection error' })
+    await flush()
+    const panel = f.findAll(node => node.tag === 'aside')[0]
+    assert.equal(panel.parent?.tag, 'app-root')
+    f.assistant.setLayout('floating')
+    await flush()
+    assert.equal(panel.parent?.tag, 'body')
+    f.assistant.setLayout('docked')
+    await flush()
+    assert.equal(panel.parent?.tag, 'app-root')
+    assert.equal(f.mounted.length, 1)
+    assert.equal(f.sent.length, 1)
+  } finally { f.close() }
+})
+
+test('the floating header moves the panel without intercepting controls or remounting the conversation', async () => {
+  const f = await fixture()
+  try {
+    f.assistant.open({ query: 'Keep this conversation running' })
+    await flush()
+    const panel = f.findAll(node => node.tag === 'aside')[0]
+    const header = f.findAll(node => node.tag === 'header')[0]
+    Object.defineProperties(panel, {
+      offsetWidth: { get: () => parseFloat(panel.props.style.width) },
+      offsetHeight: { value: 720 },
+      offsetLeft: { get: () => 1440 - parseFloat(panel.props.style.width) - parseFloat(panel.props.style.right || '12') },
+      offsetTop: { get: () => parseFloat(panel.props.style.top || '268') },
+      getBoundingClientRect: { value: () => ({ width: parseFloat(panel.props.style.width) }) },
+    })
+    let captured: number | null = null
+    Object.assign(header, {
+      setPointerCapture: (id: number) => { captured = id },
+      hasPointerCapture: (id: number) => captured === id,
+      releasePointerCapture: () => { captured = null },
+    })
+    const pointer = (clientX: number, clientY: number, control = false) => ({
+      clientX, clientY, pointerId: 1, isPrimary: true, button: 0,
+      currentTarget: header, target: { closest: () => control ? {} : null }, preventDefault() {},
+    })
+    header.props.onPointerdown(pointer(1000, 280))
+    assert.equal(captured, null, 'docked headers cannot drag')
+    f.assistant.setLayout('floating')
+    await flush()
+    header.props.onPointerdown(pointer(1000, 280, true))
+    assert.equal(captured, null, 'buttons and conversation tabs retain their normal interactions')
+    header.props.onPointerdown(pointer(1000, 280))
+    header.props.onPointermove(pointer(800, 180))
+    await flush()
+    assert.equal(captured, 1)
+    assert.match(panel.props.class, /is-dragging/)
+    assert.equal(panel.props.style.right, '212px')
+    assert.equal(panel.props.style.top, '168px')
+    header.props.onPointerup(pointer(800, 180))
+    await flush()
+    assert.equal(captured, null)
+    assert.doesNotMatch(panel.props.class, /is-dragging/)
+
+    f.assistant.close()
+    await flush()
+    f.assistant.open()
+    await flush()
+    assert.equal(panel.props.style.right, '212px')
+    assert.equal(panel.props.style.top, '168px')
+    f.assistant.setLayout('docked')
+    await flush()
+    assert.equal(panel.props.style.right, undefined)
+    assert.equal(panel.props.style.top, undefined)
+    assert.equal(f.mounted.length, 1)
+    assert.equal(f.sent.length, 1)
+  } finally { f.close() }
+})
+
+for (const existing of [false, true]) {
+  test(`contextual actions open inside the ${existing ? 'existing conversation' : 'welcome panel'} and send only on selection`, async () => {
+    let creations = 0
+    const f = await fixture(async () => { creations++; return { data: { id: 'new-session' } } })
+    try {
+      if (existing) f.assistant.setSession('ongoing-session')
+      f.assistant.publishPageContext(Symbol(), { knowledgeBaseId: 'kb-a', knowledgeId: 'document-a' })
+      f.assistant.setPageSelection({ text: 'Selected content', field: 'Document' })
+      await flush()
+      const mounts = f.mounted.length
+      await f.click('assistant.history')
+      f.assistant.showActionSuggestions({ label: 'Read this document', actions: [
+        { key: 'summary', label: 'Summarize', query: 'Summarize document-a' },
+        { key: 'compare', label: 'Compare', query: 'Compare documents', disabled: true },
+      ] })
+      await flush()
+      assert.equal(f.assistant.visible, true)
+      assert.equal(creations, 0, 'opening actions must not create a conversation or send a prompt')
+      assert.equal(f.sent.length, 0)
+      assert.equal(f.mounted.length, mounts, 'existing conversations stay mounted')
+      assert.equal(f.findAll(node => node.props.class === 'assistant-history').length, 0)
+      const buttons = f.findAll(node => node.tag === 'button')
+      const summary = buttons.find(node => node.text === 'Summarize')
+      const compare = buttons.find(node => node.text === 'Compare')
+      assert.ok(summary)
+      assert.equal(compare?.props.disabled, true)
+      f.assistant.askSuggestedAction('compare')
+      f.assistant.askSuggestedAction('missing')
+      assert.equal(f.assistant.queuedMessage, null)
+      assert.equal(creations, 0)
+      summary.props.onClick()
+      await flush()
+      assert.equal(f.assistant.actionSuggestions, null)
+      if (existing) {
+        assert.equal(f.assistant.sessionId, 'ongoing-session')
+        assert.equal(f.assistant.queuedMessage.query, 'Summarize document-a')
+        assert.equal(creations, 0)
+      } else {
+        assert.equal(creations, 1)
+        assert.equal(f.sent[0].query, 'Summarize document-a')
+        assert.equal(f.sent[0].scope.pageContext.knowledge_id, 'document-a')
+        assert.equal(f.sent[0].scope.pageContext.selection.text, 'Selected content')
+      }
+    } finally { f.close() }
+  })
+}
+
+test('contextual actions expire when their page, conversation, workspace or access changes', async () => {
+  const f = await fixture()
+  try {
+    const owner = Symbol()
+    f.assistant.publishPageContext(owner, { knowledgeBaseId: 'kb-a', knowledgeId: 'document-a' })
+    const suggest = () => f.assistant.showActionSuggestions({ label: 'Document actions', actions: [
+      { key: 'summary', label: 'Summarize', query: 'Summarize document-a' },
+    ] })
+    for (const change of [
+      () => f.assistant.publishPageContext(owner, { knowledgeBaseId: 'kb-a', knowledgeId: 'document-b' }),
+      () => f.assistant.setPageView('Another dialog'),
+      () => f.assistant.dismissPageContext(),
+      () => f.assistant.startNewConversation(),
+      () => f.assistant.setSession('another-session'),
+      () => { f.auth.effectiveTenantId = 2 },
+      () => f.assistant.setPageAccess(false),
+    ]) {
+      suggest()
+      assert.ok(f.assistant.actionSuggestions)
+      change()
+      await flush()
+      assert.equal(f.assistant.actionSuggestions, null)
+    }
+    suggest()
+    assert.equal(f.assistant.actionSuggestions, null, 'page access must be enabled')
   } finally { f.close() }
 })
 
