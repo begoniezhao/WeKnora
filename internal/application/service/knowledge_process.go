@@ -4411,7 +4411,7 @@ func (s *knowledgeService) convert(
 
 	result, err := s.callDocReaderWithTimeout(ctx, reader, req)
 	// Parser resource limits are permanent document rejections, not transient reader failures.
-	if errors.Is(err, anydoc.ErrResourceLimit) {
+	if errors.Is(err, docparser.ErrCSVMarkdownTooLarge) || errors.Is(err, anydoc.ErrResourceLimit) {
 		result, err = &types.ReadResult{Error: err.Error()}, nil
 	}
 	if err != nil {
