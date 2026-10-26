@@ -110,21 +110,21 @@
         <div v-else class="assistant-welcome">
           <div class="assistant-welcome-body">
             <div class="assistant-welcome-icon">
-              <ResourceIcon type="assistant" :size="22" />
+              <ResourceIcon type="assistant" :size="28" />
             </div>
             <h3 class="assistant-welcome-title">{{ assistant.actionSuggestions?.label || t('assistant.welcomeTitle') }}</h3>
-            <p class="assistant-welcome-desc">{{ assistant.actionSuggestions ? t('assistant.chooseAction') : welcomeDescription }}</p>
-            <div v-if="assistant.actionSuggestions" class="assistant-starters">
-              <button v-for="action in assistant.actionSuggestions.actions" :key="action.key" type="button"
-                class="assistant-starter" :disabled="starting || action.disabled"
-                @click="assistant.askSuggestedAction(action.key)">{{ action.label }}</button>
-            </div>
-            <div v-else class="assistant-starters">
-              <button v-for="starter in starters" :key="starter" type="button" class="assistant-starter"
-                :disabled="starting" @click="startConversation(starter)">
-                {{ starter }}
-              </button>
-            </div>
+            <p class="assistant-welcome-desc">{{ assistant.actionSuggestions ? t('assistant.chooseAction') : welcomeContent.description }}</p>
+          </div>
+          <div v-if="assistant.actionSuggestions" class="assistant-starters">
+            <button v-for="action in assistant.actionSuggestions.actions" :key="action.key" type="button"
+              class="assistant-starter" :disabled="starting || action.disabled"
+              @click="assistant.askSuggestedAction(action.key)">{{ action.label }}</button>
+          </div>
+          <div v-else class="assistant-starters">
+            <button v-for="starter in welcomeContent.starters" :key="starter" type="button" class="assistant-starter"
+              :disabled="starting" @click="startConversation(starter)">
+              {{ starter }}
+            </button>
           </div>
           <div class="assistant-welcome-composer">
             <InputField ref="welcomeInput" :embedded-mode="true" compact :auto-focus="assistant.visible"
@@ -151,6 +151,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import ChatView from '@/views/chat/index.vue'
 import ChildAgentTabBar from '@/views/chat/components/ChildAgentTabBar.vue'
@@ -179,6 +180,7 @@ import { removeSession, SESSION_MUTATION_EVENT, type SessionMutationDetail } fro
 import type { PageContextPayload } from '@/api/chat/streame'
 
 const { t } = useI18n()
+const route = useRoute()
 const childTabs = createChildAgentTabs()
 provide(childAgentTabsKey, childTabs)
 const assistant = useAssistantStore()
@@ -251,23 +253,91 @@ const initialMessage = ref<{
 const initialQuery = computed(() => initialMessage.value?.sessionId === assistant.sessionId
   ? initialMessage.value.query : '')
 
-const welcomeDescription = computed(() => t(assistant.contextAttached && assistant.pageContext?.agentId
-  ? 'assistant.agentWelcomeDesc' : 'assistant.welcomeDesc'))
-
-const starters = computed(() => {
-  const c = assistant.contextAttached ? assistant.pageContext : null
-  if (c?.messageId) return [t('assistant.starters.messageSources'), t('assistant.starters.messageCheck')]
-  if (c?.modelId) return [t('assistant.starters.modelCheck'), t('assistant.starters.modelUsage')]
-  if (c?.mcpServiceId) return [t('assistant.starters.mcpTools'), t('assistant.starters.mcpCheck')]
-  if (c?.page === 'settings_models') return [t('assistant.starters.modelSetup'), t('assistant.starters.modelUsage')]
-  if (c?.page === 'mcp_services') return [t('assistant.starters.mcpSetup')]
-  if (c?.agentId) return [
-    t('assistant.starters.agentConfig'), t('assistant.starters.agentModel'), t('assistant.starters.agentKnowledge'),
-  ]
-  if (c?.wikiSlug) return [t('assistant.starters.wikiIssues'), t('assistant.starters.wikiSummary')]
-  if (c?.knowledgeId) return [t('assistant.starters.documentStatus'), t('assistant.starters.documentSummary')]
-  if (c) return [t('assistant.starters.failedDocuments'), t('assistant.starters.recentActivity')]
-  return [t('assistant.starters.agents'), t('assistant.starters.formats'), t('assistant.starters.createWiki')]
+const welcomeContent = computed(() => {
+  const general = {
+    description: t('assistant.welcomeDesc'),
+    starters: [t('assistant.starters.releaseHighlights'), t('assistant.starters.gettingStarted'), t('assistant.starters.workflow')],
+  }
+  if (!assistant.pageAccess || !assistant.contextAttached) return general
+  const c = assistant.pageContext
+  // An open resource or settings dialog takes precedence over the page behind it.
+  if (c?.messageId) return {
+    description: t('assistant.welcomeDescriptions.message'),
+    starters: [t('assistant.starters.messageSources'), t('assistant.starters.messageCheck'), t('assistant.starters.messageReuse')],
+  }
+  if (c?.modelId) return {
+    description: t('assistant.welcomeDescriptions.model'),
+    starters: [t('assistant.starters.modelFit'), t('assistant.starters.modelCheck'), t('assistant.starters.modelUsage')],
+  }
+  if (c?.mcpServiceId) return {
+    description: t('assistant.welcomeDescriptions.mcp'),
+    starters: [t('assistant.starters.mcpTools'), t('assistant.starters.mcpUsage'), t('assistant.starters.mcpCheck')],
+  }
+  if (c?.page === 'settings_models') return {
+    description: t('assistant.welcomeDescriptions.model'),
+    starters: [t('assistant.starters.modelSetup'), t('assistant.starters.modelTypes'), t('assistant.starters.modelUsage')],
+  }
+  if (c?.page === 'mcp_services') return {
+    description: t('assistant.welcomeDescriptions.mcp'),
+    starters: [t('assistant.starters.mcpFind'), t('assistant.starters.mcpSetup'), t('assistant.starters.mcpExamples')],
+  }
+  if (c?.agentId) return {
+    description: t('assistant.agentWelcomeDesc'),
+    starters: [t('assistant.starters.agentConfig'), t('assistant.starters.agentModel'), t('assistant.starters.agentKnowledge')],
+  }
+  if (c?.wikiSlug) return {
+    description: t('assistant.welcomeDescriptions.wiki'),
+    starters: [t('assistant.starters.wikiSummary'), t('assistant.starters.wikiSources'), t('assistant.starters.wikiIssues')],
+  }
+  if (c?.knowledgeId) return {
+    description: t('assistant.welcomeDescriptions.document'),
+    starters: [t('assistant.starters.documentSummary'), t('assistant.starters.documentSteps'), t('assistant.starters.documentFaq')],
+  }
+  if (c?.section === 'faq' && c.knowledgeBaseId) return {
+    description: t('assistant.welcomeDescriptions.faq'),
+    starters: [t('assistant.starters.faqCoverage'), t('assistant.starters.faqDuplicates'), t('assistant.starters.faqImprove')],
+  }
+  if (c?.page === 'chat') return {
+    description: t('assistant.welcomeDescriptions.chat'),
+    starters: [t('assistant.starters.chatSummary'), t('assistant.starters.chatOpenQuestions'), t('assistant.starters.chatTodos')],
+  }
+  if (c?.knowledgeBaseId || route.name === 'knowledgeBaseDetail') return {
+    description: t('assistant.welcomeDescriptions.knowledgeBase'),
+    starters: [t('assistant.starters.knowledgeTopics'), t('assistant.starters.recentActivity'), t('assistant.starters.knowledgeGaps')],
+  }
+  if (route.name === 'knowledgeBaseList' || route.name === 'home') return {
+    description: t('assistant.welcomeDescriptions.knowledgeBases'),
+    starters: [t('assistant.starters.knowledgeOverview'), t('assistant.starters.knowledgeType'), t('assistant.starters.knowledgeOrganize')],
+  }
+  if (route.name === 'agentList') return {
+    description: t('assistant.welcomeDescriptions.agents'),
+    starters: [t('assistant.starters.agents'), t('assistant.starters.agentCreate'), t('assistant.starters.agentChoose')],
+  }
+  if (route.name === 'automationList') return {
+    description: t('assistant.welcomeDescriptions.automation'),
+    starters: route.params.automationId ? [
+      t('assistant.starters.automationSummary'), t('assistant.starters.automationSchedule'), t('assistant.starters.automationImprove'),
+    ] : [
+      t('assistant.starters.automationIdeas'), t('assistant.starters.automationCreate'), t('assistant.starters.automationOverview'),
+    ],
+  }
+  if (route.name === 'toolbox' && route.params.section === 'mcp') return {
+    description: t('assistant.welcomeDescriptions.mcp'),
+    starters: [t('assistant.starters.mcpFind'), t('assistant.starters.mcpSetup'), t('assistant.starters.mcpExamples')],
+  }
+  if (route.name === 'toolbox' && route.params.section === 'browserconnection') return {
+    description: t('assistant.welcomeDescriptions.browser'),
+    starters: [t('assistant.starters.browserConnect'), t('assistant.starters.browserTasks'), t('assistant.starters.browserSafety')],
+  }
+  if (route.name === 'toolbox') return {
+    description: t('assistant.welcomeDescriptions.skills'),
+    starters: [t('assistant.starters.skillFind'), t('assistant.starters.skillAdd'), t('assistant.starters.skillUse')],
+  }
+  if (route.name === 'chat') return {
+    description: t('assistant.welcomeDescriptions.chat'),
+    starters: [t('assistant.starters.chatSummary'), t('assistant.starters.chatOpenQuestions'), t('assistant.starters.chatTodos')],
+  }
+  return general
 })
 
 // Page context is a hint, not an explicit retrieval selection. The backend
@@ -677,17 +747,43 @@ onUnmounted(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  background: radial-gradient(ellipse 115% 65% at 50% 100%,
+    color-mix(in srgb, var(--td-brand-color) 8%, transparent), transparent 75%);
+
+  > .assistant-starters {
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    margin: 0;
+    padding: 0 16px 4px;
+  }
+
+  .assistant-starter {
+    max-width: 100%;
+    padding: 10px 14px;
+    border-color: transparent;
+    border-radius: var(--app-radius-pill);
+    background: var(--td-bg-color-secondarycontainer);
+    line-height: 1.5;
+    text-align: left;
+
+    &:hover:not(:disabled) {
+      background: var(--td-bg-color-container-hover);
+      border-color: var(--td-component-stroke);
+    }
+  }
 }
 
 .assistant-welcome-body {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 24px;
+  padding: 24px 24px 20px;
   text-align: center;
 }
 
@@ -698,23 +794,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--td-brand-color) 10%, transparent);
   color: var(--td-brand-color);
 }
 
 .assistant-welcome-title {
-  margin: 4px 0 0;
-  font-size: var(--app-text-lg);
-  font-weight: 600;
+  margin: 8px 0 0;
+  font-size: var(--app-text-2xl);
+  font-weight: 500;
+  line-height: 1.5;
   color: var(--td-text-color-primary);
 }
 
 .assistant-welcome-desc {
   margin: 0;
-  max-width: 420px;
-  font-size: var(--app-text-md);
-  line-height: 1.6;
+  max-width: 360px;
+  font-size: var(--app-text-sm);
+  line-height: 1.7;
   color: var(--td-text-color-secondary);
+  text-wrap: balance;
 }
 
 .assistant-starters {
@@ -791,46 +888,9 @@ onUnmounted(() => {
   .assistant-panel.is-open {
     animation: assistant-panel-in var(--app-motion-slow) cubic-bezier(0.16, 1, 0.3, 1);
 
-    &::before,
-    &::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      z-index: 1;
-      padding: 1px;
-      border-radius: inherit;
-      pointer-events: none;
-      opacity: 0;
-      background: conic-gradient(from var(--assistant-border-angle),
-        transparent 0deg 260deg,
-        color-mix(in srgb, var(--td-brand-color) 15%, transparent) 300deg,
-        color-mix(in srgb, var(--td-brand-color) 70%, transparent) 340deg,
-        var(--td-brand-color) 355deg,
-        transparent 360deg);
-      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-      -webkit-mask-composite: xor;
-      mask-composite: exclude;
-      animation: assistant-panel-glow calc(var(--app-motion-slow) * 6) linear var(--app-motion-instant);
-    }
-
-    &::before {
-      padding: 4px;
-      filter: blur(3px);
-    }
-
-    .assistant-panel__header-icon,
-    .assistant-welcome-icon {
-      animation: assistant-icon-in calc(var(--app-motion-base) + var(--app-motion-slow)) ease-out backwards;
-    }
-
-    .assistant-welcome-icon {
-      animation-delay: var(--app-motion-instant);
-    }
-
     .assistant-welcome-title,
     .assistant-welcome-desc,
-    .assistant-welcome-body > .assistant-starters,
+    .assistant-welcome > .assistant-starters,
     .assistant-welcome-composer,
     .assistant-suggestions {
       animation: assistant-content-in var(--app-motion-slow) cubic-bezier(0.16, 1, 0.3, 1) backwards;
@@ -841,23 +901,9 @@ onUnmounted(() => {
       animation-delay: var(--app-motion-fast);
     }
 
-    .assistant-welcome-body > .assistant-starters {
+    .assistant-welcome > .assistant-starters {
       animation-delay: var(--app-motion-base);
     }
-  }
-}
-
-@keyframes assistant-panel-glow {
-  from {
-    --assistant-border-angle: 0deg;
-    opacity: 0;
-  }
-
-  12%, 80% { opacity: 0.65; }
-
-  to {
-    --assistant-border-angle: 360deg;
-    opacity: 0;
   }
 }
 
@@ -884,34 +930,9 @@ onUnmounted(() => {
     transform: none;
   }
 }
-
-@keyframes assistant-icon-in {
-  from {
-    opacity: 0;
-    transform: scale(0.88);
-  }
-
-  45% {
-    opacity: 1;
-    transform: scale(1.04);
-    box-shadow: 0 0 16px color-mix(in srgb, var(--td-brand-color) 22%, transparent);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-    box-shadow: none;
-  }
-}
 </style>
 
 <style lang="less">
-@property --assistant-border-angle {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
-}
-
 html.has-assistant-dock {
   .t-drawer:not(.t-drawer--attach):not(.chat-artifacts-drawer),
   .t-dialog__ctx--fixed .t-dialog__mask,
