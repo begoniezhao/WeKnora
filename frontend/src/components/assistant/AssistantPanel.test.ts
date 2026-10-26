@@ -202,12 +202,13 @@ test('welcome descriptions and questions change with pages and toolbox tabs with
     const pages: Array<[string, Record<string, string>, string, string[]]> = [
       ['knowledgeBaseList', {}, 'knowledgeBases', ['knowledgeOverview', 'knowledgeType', 'knowledgeOrganize']],
       ['knowledgeBaseDetail', {}, 'knowledgeBase', ['knowledgeTopics', 'recentActivity', 'knowledgeGaps']],
+      ['artifactLibrary', {}, 'artifacts', ['artifactRecent', 'artifactSources', 'artifactCreate']],
       ['agentList', {}, 'agents', ['agents', 'agentCreate', 'agentChoose']],
       ['automationList', {}, 'automation', ['automationIdeas', 'automationCreate', 'automationOverview']],
       ['automationList', { automationId: 'weekly' }, 'automation', ['automationSummary', 'automationSchedule', 'automationImprove']],
       ['toolbox', { section: 'skills' }, 'skills', ['skillFind', 'skillAdd', 'skillUse']],
       ['toolbox', { section: 'mcp' }, 'mcp', ['mcpFind', 'mcpSetup', 'mcpExamples']],
-      ['toolbox', { section: 'browserconnection' }, 'browser', ['browserConnect', 'browserTasks', 'browserSafety']],
+      ['toolbox', { section: 'browserconnection' }, 'browser', ['browserConnect', 'browserTasks', 'browserReconnect']],
       ['chat', {}, 'chat', ['chatSummary', 'chatOpenQuestions', 'chatTodos']],
     ]
     for (const [name, params, intro, expected] of pages) {

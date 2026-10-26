@@ -19,6 +19,23 @@
           <span class="assistant-panel__header-icon" aria-hidden="true"><ResourceIcon type="assistant" :size="16" /></span>
           <span class="assistant-panel__title">{{ assistantName }}</span>
         </template>
+        <template #beside>
+          <t-popup placement="bottom-left" trigger="hover" show-arrow
+            :overlay-inner-style="{ maxWidth: '320px', padding: '12px 14px' }">
+            <button type="button" class="assistant-panel__help" :aria-label="t('assistant.help.label')"
+              @click.stop @pointerdown.stop>
+              <t-icon name="help-circle" size="16px" />
+            </button>
+            <template #content>
+              <div class="assistant-help">
+                <p class="assistant-help__title">{{ t('assistant.help.title') }}</p>
+                <p>{{ t('assistant.help.identity') }}</p>
+                <p>{{ t('assistant.help.page') }}</p>
+                <p>{{ t('assistant.help.access') }}</p>
+              </div>
+            </template>
+          </t-popup>
+        </template>
       </ChildAgentTabBar>
       <t-tooltip :content="t('assistant.newConversation')" placement="bottom">
         <button type="button" class="assistant-panel__action" :disabled="!assistant.sessionId || starting"
@@ -305,6 +322,10 @@ const welcomeContent = computed(() => {
     description: t('assistant.welcomeDescriptions.knowledgeBase'),
     starters: [t('assistant.starters.knowledgeTopics'), t('assistant.starters.recentActivity'), t('assistant.starters.knowledgeGaps')],
   }
+  if (route.name === 'artifactLibrary') return {
+    description: t('assistant.welcomeDescriptions.artifacts'),
+    starters: [t('assistant.starters.artifactRecent'), t('assistant.starters.artifactSources'), t('assistant.starters.artifactCreate')],
+  }
   if (route.name === 'knowledgeBaseList' || route.name === 'home') return {
     description: t('assistant.welcomeDescriptions.knowledgeBases'),
     starters: [t('assistant.starters.knowledgeOverview'), t('assistant.starters.knowledgeType'), t('assistant.starters.knowledgeOrganize')],
@@ -327,7 +348,7 @@ const welcomeContent = computed(() => {
   }
   if (route.name === 'toolbox' && route.params.section === 'browserconnection') return {
     description: t('assistant.welcomeDescriptions.browser'),
-    starters: [t('assistant.starters.browserConnect'), t('assistant.starters.browserTasks'), t('assistant.starters.browserSafety')],
+    starters: [t('assistant.starters.browserConnect'), t('assistant.starters.browserTasks'), t('assistant.starters.browserReconnect')],
   }
   if (route.name === 'toolbox') return {
     description: t('assistant.welcomeDescriptions.skills'),
@@ -542,6 +563,8 @@ onUnmounted(() => {
 </script>
 
 <style lang="less" scoped>
+@import (reference) '../css/suggested-questions.less';
+@import (reference) '../css/settings-section.less';
 .assistant-panel {
   display: none;
   position: relative;
@@ -635,8 +658,34 @@ onUnmounted(() => {
   font-size: var(--app-text-lg);
 }
 
+.assistant-panel__help {
+  .settings-title-help();
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+}
+
+.assistant-help {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  p {
+    margin: 0;
+    color: var(--td-text-color-secondary);
+    font-size: var(--app-text-sm);
+    line-height: 1.6;
+  }
+
+  p.assistant-help__title {
+    color: var(--td-text-color-primary);
+    font-size: var(--app-text-md);
+    font-weight: 600;
+  }
+}
+
 .assistant-panel__title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   font-size: var(--app-text-base);
   font-weight: 500;
@@ -755,22 +804,32 @@ onUnmounted(() => {
     flex: 0 0 auto;
     flex-direction: column;
     align-items: flex-start;
+    gap: 10px;
     margin: 0;
     padding: 0 16px 4px;
   }
 
   .assistant-starter {
+    display: inline-flex;
+    align-items: center;
     max-width: 100%;
-    padding: 10px 14px;
-    border-color: transparent;
-    border-radius: var(--app-radius-pill);
-    background: var(--td-bg-color-secondarycontainer);
+    padding: 8px 14px;
+    border: 1px solid var(--td-component-stroke);
+    border-radius: var(--app-radius-lg);
+    background: var(--td-bg-color-container);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    font-size: var(--app-text-md);
     line-height: 1.5;
     text-align: left;
+    white-space: normal;
+    transition: border-color var(--app-motion-base) ease, box-shadow var(--app-motion-base) ease, background var(--app-motion-base) ease;
 
     &:hover:not(:disabled) {
-      background: var(--td-bg-color-container-hover);
-      border-color: var(--td-component-stroke);
+      .suggestion-chip-hover();
+    }
+
+    &:active:not(:disabled) {
+      .suggestion-chip-active();
     }
   }
 }
