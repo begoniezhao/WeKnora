@@ -39,6 +39,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/hitl"
 	"github.com/Tencent/WeKnora/internal/agent/operations"
+	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	dorisRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v7"
@@ -190,6 +191,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMCPOAuthRepository))
 	must(container.Provide(repository.NewTenantSandboxConfigRepository))
 	must(container.Provide(repository.NewTenantSkillRepository))
+	must(container.Provide(repository.NewPluginRepository))
+	must(container.Provide(repository.NewPluginOwnershipLookup))
 	must(container.Provide(repository.NewCustomAgentRepository))
 	must(container.Provide(repository.NewOrganizationRepository))
 	must(container.Provide(repository.NewKBShareRepository))
@@ -267,6 +270,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		container.Provide(service.NewKBShareService),
 	) // KBShareService must be registered before KnowledgeService and KnowledgeTagService
 	must(container.Provide(service.NewAgentShareService))
+	// Dig matches exact types. Handlers depend on the narrow lookup, not the
+	// full share service.
+	must(container.Provide(asSharedAgentLookup))
 	must(container.Provide(service.NewKnowledgeService))
 	must(container.Provide(service.NewSpanTracker))
 	must(container.Provide(service.NewChunkService))
@@ -633,6 +639,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		}
 		cfgSvc.WithUserMachineReleaser(cleaner)
 	}))
+	must(container.Provide(service.NewPluginService))
+	// Invoked rather than left to the router so that skill installs settle
+	// plugin status in every process that runs them.
+	must(container.Invoke(func(plugins *service.PluginService, skills *service.TenantSkillService) {
+		skills.OnSkillStateChange(plugins.HandleSkillStateChange)
+	}))
 	must(container.Invoke(startTenantSkillReaper))
 	logger.Debugf(ctx, "[Container] Tenant skill reaper registered")
 	must(
@@ -698,18 +710,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewInitializationHandler))
 	must(container.Provide(handler.NewAuthHandler))
 	must(container.Provide(handler.NewSystemHandler))
-	// Dig resolves exact types; adapt the registered service to the handler's
-	// narrower SharedAgentLookup interface at the composition boundary.
-	must(container.Provide(func(
-		mcpService interfaces.MCPServiceService,
-		toolApprovals interfaces.MCPToolApprovalService,
-		gate *approval.Gate,
-		models interfaces.ModelService,
-		agents interfaces.AgentShareService,
-		grants interfaces.AgentGrantRepository,
-	) *handler.MCPServiceHandler {
-		return handler.NewMCPServiceHandler(mcpService, toolApprovals, gate, models, agents).WithGrants(grants)
-	}))
+	must(container.Provide(handler.NewMCPServiceHandler))
 	must(container.Invoke(func(
 		sessions *session.Handler, mcp *handler.MCPServiceHandler,
 		broker *hitl.Broker, runs *service.SuspendedRunService, rewind *service.SessionRewindService,
@@ -770,6 +771,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewOrganizationHandler))
 	must(container.Provide(handler.NewMemoryHandler))
 	must(container.Provide(handler.NewAutomationHandler))
+
+	must(container.Provide(handler.NewPluginHandler))
 
 	// Data source handler
 	must(container.Provide(handler.NewDataSourceHandler))
@@ -2147,6 +2150,13 @@ func startHousekeepingService(svc *service.HousekeepingService, cleaner interfac
 		svc.StopWithin(cleanupStepTimeout)
 		return nil
 	})
+}
+
+// asSharedAgentLookup registers the share service under the narrow interface
+// handlers ask for. AgentShareService implements it, but dig will not treat
+// one interface as the other.
+func asSharedAgentLookup(s interfaces.AgentShareService) access.SharedAgentLookup {
+	return s
 }
 
 // startTenantSkillReaper starts the stuck-install / orphan-snapshot cron and
