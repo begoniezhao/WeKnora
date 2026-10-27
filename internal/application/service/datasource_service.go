@@ -791,12 +791,12 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 	autoTagIDs := s.resolveAutoTagIDs(ctx, ds)
 
 	var ingestErr error
-	permanentFailures := 0
+	nonBlockingFailures := 0
 	for _, item := range items {
 		item := item
-		err := s.applyFetchedItem(withKBActivitySuppressed(ctx), ds, &item, autoTagIDs, result)
-		if errors.Is(err, ErrInvalidFileType) {
-			permanentFailures++
+		nonBlocking, err := s.applyFetchedItem(withKBActivitySuppressed(ctx), ds, &item, autoTagIDs, result)
+		if nonBlocking || errors.Is(err, ErrInvalidFileType) {
+			nonBlockingFailures++
 		} else if err != nil && ingestErr == nil {
 			ingestErr = err
 		}
@@ -809,7 +809,7 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 			types.SyncLogStatusFailed, ingestErr.Error(), wasPaused)
 		return ingestErr
 	}
-	if err := allFetchedItemsFailedError(result); err != nil && result.Failed != permanentFailures {
+	if err := allFetchedItemsFailedError(result, nonBlockingFailures); err != nil {
 		logger.Errorf(ctx, "data source sync failed while processing fetched items: %v", err)
 		s.updateSyncRunResult(ctx, ds, syncLog, result, resultJSON, types.SyncLogStatusFailed, err.Error(), wasPaused)
 		return err
@@ -909,19 +909,20 @@ func fetchFailureSyncError(item *types.FetchedItem, rawMsg string) types.SyncIte
 // streaming handler so item classification (deleted / empty / ingest outcome)
 // stays identical across both fetch paths. Unexpected ingestion errors are
 // returned so callers do not acknowledge a cursor beyond an unaccepted item.
+// The boolean marks oversized downloads that should not disable scheduled syncs.
 func (s *DataSourceService) applyFetchedItem(
 	ctx context.Context, ds *types.DataSource, item *types.FetchedItem,
 	tagIDs []string, result *types.SyncResult,
-) error {
+) (nonBlockingFailure bool, ingestErr error) {
 	if item.IsDeleted {
 		if !ds.SyncDeletions {
 			// Sync deletion disabled: neither count nor delete.
-			return nil
+			return false, nil
 		}
 		if item.ExternalID == "" {
 			logger.Warnf(ctx, "skipping deletion for item %q: empty external_id", item.Title)
 			result.Skipped++
-			return nil
+			return false, nil
 		}
 		// Perform real KB deletion, scoped to items owned by this data source
 		// so identical external IDs from different data sources cannot collide.
@@ -939,13 +940,13 @@ func (s *DataSourceService) applyFetchedItem(
 				Code:    "deletion_lookup_failed",
 				Message: "Failed to look up the item before deletion; see server logs",
 			})
-			return nil
+			return false, nil
 		}
 		if existing == nil {
 			// Deletion is idempotent: the source item may already have been
 			// removed manually or by an earlier sync.
 			result.Skipped++
-			return nil
+			return false, nil
 		}
 		if deleteErr := s.knowledgeService.DeleteKnowledge(ctx, existing.ID); deleteErr != nil {
 			// The cursor is already past this item, so a failed deletion normally
@@ -960,7 +961,7 @@ func (s *DataSourceService) applyFetchedItem(
 				Code:    "deletion_failed",
 				Message: "Deletion failed; see server logs",
 			})
-			return nil
+			return false, nil
 		}
 		if herr := repo.HardDeleteKnowledge(ctx, ds.TenantID, existing.ID); herr != nil {
 			result.Failed++
@@ -972,10 +973,10 @@ func (s *DataSourceService) applyFetchedItem(
 				Code:    "deletion_failed",
 				Message: "Deletion failed; see server logs",
 			})
-			return nil
+			return false, nil
 		}
 		result.Deleted++
-		return nil
+		return false, nil
 	}
 
 	if len(item.Content) == 0 && item.URL == "" {
@@ -984,11 +985,12 @@ func (s *DataSourceService) applyFetchedItem(
 			logger.Warnf(ctx, "item %q (external_id=%s) fetch failed: %s", item.Title, item.ExternalID, errMsg)
 			result.Failed++
 			recordSyncError(result, fetchFailureSyncError(item, errMsg))
+			return item.Metadata["error_reason_code"] == "dingtalk_document_too_large", nil
 		} else {
 			logger.Infof(ctx, "skipping item %q (external_id=%s): no content or URL", item.Title, item.ExternalID)
 			result.Skipped++
 		}
-		return nil
+		return false, nil
 	}
 
 	isUpdate, err := s.ingestItem(ctx, ds, item, tagIDs)
@@ -1004,7 +1006,7 @@ func (s *DataSourceService) applyFetchedItem(
 			recordSyncError(result, types.SyncItemError{
 				Title: item.Title, Code: "unsupported_file_type", Message: "Unsupported file type",
 			})
-			return err
+			return false, err
 		default:
 			logger.Warnf(ctx, "failed to ingest item %q (external_id=%s): %v", item.Title, item.ExternalID, err)
 			result.Failed++
@@ -1013,14 +1015,14 @@ func (s *DataSourceService) applyFetchedItem(
 				Code:    "ingest_failed",
 				Message: "Ingest failed; see server logs",
 			})
-			return &dataSourceIngestError{cause: err}
+			return false, &dataSourceIngestError{cause: err}
 		}
 	} else if isUpdate {
 		result.Updated++
 	} else {
 		result.Created++
 	}
-	return nil
+	return false, nil
 }
 
 // streamStartCursor decides which cursor a streaming fetch should resume from.
@@ -1106,9 +1108,9 @@ type streamSyncHandler struct {
 	result    *types.SyncResult
 	syncLog   *types.SyncLog
 	ingestErr error
-	// Count separately from the capped error samples; permanent rejections may
-	// advance a cursor even when every item in this round is unsupported.
-	permanentFailures int
+	// Count separately from the capped error samples; unsupported and oversized
+	// files must not disable future syncs, including runs with both failure types.
+	nonBlockingFailures int
 }
 
 // Emit ingests one streamed item. Unexpected ingestion errors abort the stream
@@ -1121,9 +1123,9 @@ func (h *streamSyncHandler) Emit(ctx context.Context, item types.FetchedItem) er
 		return err
 	}
 	h.result.Total++
-	err := h.svc.applyFetchedItem(withKBActivitySuppressed(ctx), h.ds, &item, h.tagIDs, h.result)
-	if errors.Is(err, ErrInvalidFileType) {
-		h.permanentFailures++
+	nonBlocking, err := h.svc.applyFetchedItem(withKBActivitySuppressed(ctx), h.ds, &item, h.tagIDs, h.result)
+	if nonBlocking || errors.Is(err, ErrInvalidFileType) {
+		h.nonBlockingFailures++
 		return nil
 	}
 	h.ingestErr = err
@@ -1253,7 +1255,7 @@ func (s *DataSourceService) processSyncStreaming(
 	}
 
 	resultJSON, _ := result.ToJSON()
-	if err := allFetchedItemsFailedError(result); err != nil && result.Failed != handler.permanentFailures {
+	if err := allFetchedItemsFailedError(result, handler.nonBlockingFailures); err != nil {
 		logger.Errorf(ctx, "streaming sync failed while processing fetched items: %v", err)
 		s.updateSyncRunResult(ctx, ds, syncLog, result, resultJSON, types.SyncLogStatusFailed, err.Error(), wasPaused)
 		return err
@@ -1350,12 +1352,19 @@ func (s *DataSourceService) updateSyncRunResult(
 		})
 }
 
-func allFetchedItemsFailedError(result *types.SyncResult) error {
+func allFetchedItemsFailedError(result *types.SyncResult, nonBlockingFailures int) error {
 	if result == nil || result.Total == 0 {
 		return nil
 	}
 	if result.Failed != result.Total || result.Created != 0 || result.Updated != 0 ||
 		result.Deleted != 0 || result.Skipped != 0 {
+		return nil
+	}
+	// An oversized or unsupported file will not recover by replaying the same
+	// task. Keep the failure visible as a partial run. Oversized downloads retain
+	// their connector revision until the source file is replaced. Other failures
+	// still follows the existing failure/retry path, even beyond the sample cap.
+	if nonBlockingFailures == result.Failed {
 		return nil
 	}
 
