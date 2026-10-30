@@ -7115,6 +7115,11 @@ definitions:
           indexed beside the chunk.
         type: boolean
         x-agent: question_generation_enabled
+      model_id:
+        description: ModelID selects a chat model for questions. Empty inherits the
+          summary model.
+        type: string
+        x-agent: question_model_id
       question_count:
         description: QuestionCount is how many questions to write per chunk, from
           1 to 10.
@@ -9697,6 +9702,7 @@ definitions:
     - metaso
     - bocha
     - serply
+    - deepseek
     type: string
     x-enum-varnames:
     - WebSearchProviderTypeBrave
@@ -9713,6 +9719,7 @@ definitions:
     - WebSearchProviderTypeMetaso
     - WebSearchProviderTypeBocha
     - WebSearchProviderTypeSerply
+    - WebSearchProviderTypeDeepSeek
   github_com_Tencent_WeKnora_internal_types.WebSearchProviderTypeInfo:
     properties:
       config_fields:
@@ -9762,6 +9769,13 @@ definitions:
     type: object
   github_com_Tencent_WeKnora_internal_types.WikiConfig:
     properties:
+      auto_generate:
+        default: true
+        description: |-
+          AutoGenerate disables background Wiki generation when false. Omitted means true.
+          Manual page APIs and Wiki retrieval remain available while Wiki is enabled.
+        type: boolean
+        x-agent: wiki_auto_generate
       content_instructions:
         description: ContentInstructions sets tone and emphasis for generated Wiki
           prose. Citations stay fixed.
@@ -11553,6 +11567,8 @@ definitions:
             type: string
           enabled:
             type: boolean
+          modelId:
+            type: string
           questionCount:
             type: integer
         type: object

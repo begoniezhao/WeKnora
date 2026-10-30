@@ -1218,6 +1218,17 @@ export default {
       paths: '同步目錄', pathsPlaceholder: '每行一個目錄；留空同步整個專案',
       addProject: '新增專案', projectRequired: '請至少新增一個 GitLab 專案',
     },
+    nextcloud: {
+      baseUrl: 'Nextcloud 位址',
+      baseUrlHint: '填寫安裝位址，如 https://nextcloud.example.com/cloud，不含 /remote.php/dav。私有網路部署請使用現有的 SSRF_WHITELIST 設定。',
+      username: '使用者名稱',
+      appPassword: '應用程式密碼',
+      appPasswordHint: '在「個人設定 → 安全性 → 裝置與工作階段」中建立應用程式密碼，使用產生的使用者名稱與密碼。',
+      selectionRequired: '請至少選取一個資料夾或檔案',
+      includeExtensions: '包含的副檔名（選填）',
+      excludeExtensions: '排除的副檔名（選填）',
+      extensionsHint: '以逗號分隔副檔名，如 .pdf, .md。包含項留空表示所有支援的格式，排除項優先。修改篩選條件也會改變刪除核對範圍。',
+    },
     seafile: {
       baseUrl: 'Seafile 地址', apiToken: 'API 權杖',
       apiTokenHint: '在 Seafile「設定 → Web API 權杖」中生成；帳號對所選資料庫有讀取權限即可，權杖不會隨檔案下載請求傳送。',
@@ -1237,6 +1248,10 @@ export default {
     guideStep1_notion: '在 Notion 中打開你想要同步的頁面或資料庫',
     guideStep2_notion: '點擊右上角的「···」選單，選擇「Connect to」或「Add connections」',
     guideStep3_notion: '搜尋並選擇你的集成應用（Integration），然後回到這裡點重新載入',
+    noResourcesDesc_nextcloud: '找不到可存取的資料夾或支援的檔案',
+    guideStep1_nextcloud: '登入 Nextcloud，確認帳號有權讀取所選資料夾',
+    guideStep2_nextcloud: '在「個人設定 → 安全性 → 裝置與工作階段」中建立應用程式密碼',
+    guideStep3_nextcloud: '在此取代憑證，然後重新載入資源',
     noResourcesDesc_seafile: '該權杖能存取的資料庫為空，或全部為加密資料庫（不支持同步）',
     guideStep1_seafile: '登入 Seafile，確認帳號至少擁有一個未加密資料庫的讀取權限',
     guideStep2_seafile: '在「設定 → Web API 權杖」中生成或重新生成權杖',
@@ -1388,6 +1403,7 @@ export default {
       ima: '同步騰訊 IMA 知識庫中的文件、筆記與檔案（暫不支持 AI 會話與影片解析）',
       rss: '同步 RSS / Atom 訂閱源中的文章',
       gitlab: '同步 GitLab 專案中的檔案',
+      nextcloud: '透過 WebDAV 同步 Nextcloud 中的資料夾與檔案',
       seafile: '同步 Seafile 資料庫中的目錄與檔案'
     },
     connector: {
@@ -1402,6 +1418,7 @@ export default {
       ima: '騰訊 IMA',
       rss: 'RSS / Atom 訂閱',
       gitlab: 'GitLab',
+      nextcloud: 'Nextcloud',
       seafile: 'Seafile'
     },
     logDetail: {
@@ -1468,6 +1485,14 @@ export default {
       deletion_lookup_failed: '刪除前尋找文件失敗，請查看伺服器日誌',
       deletion_failed: '刪除失敗，請查看伺服器日誌',
       ingest_failed: '匯入失敗，請查看伺服器日誌',
+      nextcloud_permission_denied: '無權存取該 Nextcloud 檔案，請檢查帳號權限。',
+      nextcloud_not_found: 'Nextcloud 檔案在掃描後消失，下次同步將重試。',
+      nextcloud_file_too_large: 'Nextcloud 檔案超過 MAX_FILE_SIZE_MB 限制。',
+      nextcloud_empty_file: 'Nextcloud 檔案內容為空，已略過。',
+      nextcloud_source_changed: 'Nextcloud 檔案在下載過程中發生變更，下次同步將重試。',
+      nextcloud_invalid_response: 'Nextcloud 傳回無效或不完整的 WebDAV 回應。',
+      nextcloud_ssrf_blocked: 'Nextcloud 請求遭 SSRF 策略封鎖，請檢查 SSRF_WHITELIST。',
+      nextcloud_fetch_failed: '從 Nextcloud 取得檔案失敗，下次同步將重試。',
       seafile_permission_denied: '無權存取該 Seafile 檔案，請檢查權杖所屬帳號的資料庫權限。',
       seafile_not_found: 'Seafile 檔案不存在或已被移動，下次同步將重試。',
       seafile_file_too_large: 'Seafile 檔案超過大小限制，請調大 MAX_FILE_SIZE_MB 或縮小該檔案。',
@@ -3706,6 +3731,7 @@ export default {
       bindings: {
         embedding_model: 'Embedding 模型',
         summary_model: '摘要模型',
+          question_model: '問題生成模型',
         image_processing_model: '圖片處理模型',
         vlm_model: '視覺理解模型',
         asr_model: '語音辨識模型',
@@ -4362,6 +4388,8 @@ export default {
     buildTimeDescription: '系統建構的時間',
     goVersionLabel: 'Go 版本',
     goVersionDescription: '後端使用的 Go 語言版本',
+    docreaderVersionLabel: 'Docreader 版本',
+    docreaderVersionDescription: '目前文件解析服務（weknora-docreader）的建構版本號',
     startedAtLabel: '服務啟動時間',
     startedAtDescription: '當前後端行程最近一次啟動的時刻',
     uptimeLabel: '運行時長',
@@ -5314,6 +5342,9 @@ export default {
         placeholder: '例如：這是銷售訂單表，金額單位為元，status 欄位使用公司內部狀態碼…'
       },
       questionGeneration: {
+        modelLabel: '問題生成模型',
+        modelDescription: '留空時使用知識庫的摘要模型。',
+        modelPlaceholder: '選擇問題生成模型',
         label: 'AI 問題生成',
         description: '解析文件時呼叫大型語言模型為每個切塊生成相關問題，提高檢索召回率。啟用後會增加文件解析耗時。',
         countLabel: '生成問題數量',
@@ -5816,6 +5847,9 @@ export default {
       cardOverviewPrimary: '{returned} / {total} 個節點',
       cardOverviewHintTruncated: '按兩下任意節點聚焦到該節點的子圖',
       cardOverviewHintFull: '已展示知識庫全部節點',
+      cardOverviewDetailHint: '目前只展示較高層級，調高滑桿可查看更多頁面',
+      graphDetailLevel: '層級',
+      graphDetailHint: '調高可顯示更多相連頁面',
       cardRelatedNodes: '{count} 個相關節點',
       helpButtonTitle: '操作幫助',
       helpTitle: '畫布操作',
@@ -5891,6 +5925,8 @@ export default {
       synthesisModelLabel: 'Wiki 合成模型',
       synthesisModelPlaceholder: '選擇用於 Wiki 生成的 LLM 模型',
       synthesisModelTip: '不設定時將回退使用摘要模型',
+      autoGenerateLabel: '自動生成 Wiki 頁面',
+      autoGenerateTip: '關閉後仍可瀏覽和手動維護 Wiki 頁面，但文件處理不會自動呼叫 LLM 生成或更新頁面',
       extractionGranularityLabel: '提取粒度',
       contentInstructionsLabel: 'Wiki 內容生成要求',
       contentInstructionsTip: '控制摘要、頁面和首頁的表達重點；引用、合併與防幻覺規則由系統固定維護。修改後需重新解析才能影響已有內容。',
@@ -6097,6 +6133,16 @@ export default {
     }
   },
   embedPublish: {
+    history: "對話歷史",
+    historyHint: "最近 30 個對話，僅儲存在此瀏覽器。清除紀錄不會刪除伺服器訊息。",
+    historyEmpty: "暫無對話紀錄",
+    historyUntitled: "未命名對話",
+    historyClear: "清除本機歷史",
+    historyClearConfirm: "清除此瀏覽器的歷史並開啟新對話？伺服器訊息將保留。",
+    historyRetry: "重試",
+    historyLoadFailed: "無法開啟對話，請稍後重試。",
+    historyUnavailable: "此對話已無法使用，已從本機歷史移除。",
+
     create: '新建內嵌通路',
     channelsTitle: '內嵌通路',
     disabled: '已停用',
@@ -6500,6 +6546,28 @@ export default {
   },
   file: {
     upload: '上傳檔案'
+  },
+  mentionBrowser: {
+    browse: "按目錄瀏覽",
+    path: "目錄路徑",
+    root: "根目錄",
+    searchFolder: "搜尋目前目錄",
+    searchKb: "搜尋知識庫",
+    subtree: "搜尋包含目前目錄及其子目錄。",
+    wholeKb: "目前仍選取整個知識庫，選取單一檔案不會縮小範圍。",
+    tags: "既有標籤仍會篩選所選檔案。",
+    folderCount: "含子目錄共 {count} 個文件",
+    selected: "已選取",
+    deleting: "正在刪除",
+    unsupported: "目前代理不支援此格式",
+    forbidden: "你已無權存取此內容。",
+    missing: "目錄已失效，請返回並重新選取。",
+    error: "目錄載入失敗，請重試。",
+    retry: "重試",
+    empty: "目前檢視沒有檔案。",
+    previous: "上一頁",
+    next: "下一頁",
+    page: "第 {page} 頁 · 共 {total} 個文件",
   },
   mentionDetail: {
     readOnlyFromAgent: '僅在此對話中唯讀，不顯示在知識庫清單中',
@@ -6966,6 +7034,68 @@ export default {
     clearSuccess: '已清除你的值。',
     updatedAt: '你於 {time} 設定'
   },
+  defaultSettings: {
+    loadFailed: '預設設定載入失敗，請重試後再編輯。',
+    title: '預設設定',
+    description: '集中管理本空間各項功能預設使用的模型和搜尋引擎。',
+    introTitle: '資源未單獨指定時使用這裡的預設值',
+    introDescription: '智慧體、知識庫或單次對話明確選擇的模型優先；未選擇時使用這裡的空間預設；空間也未設定時，使用部署內建的預設模型。',
+    readOnly: '僅空間管理員可以修改，你可以查看目前生效的預設值。',
+    modelGroup: '模型',
+    webSearchGroup: '網路搜尋',
+    unsetPlaceholder: '未設定（使用系統預設）',
+    followChatPlaceholder: '未設定（跟隨預設對話模型）',
+    slots: {
+      chat: {
+        label: '預設對話模型',
+        description: '新建智慧體和問答預設使用，也作為背景任務的備援模型。',
+        none: '空間內沒有可用的對話模型，問答和背景生成將無法使用。',
+      },
+      utility: {
+        label: '輕量生成模型',
+        description: '用於生成會話標題、MCP 服務使用說明、記憶擷取等短文字任務，可選更快更便宜的模型。',
+        none: '空間內沒有可用的對話模型，標題和說明生成將無法使用。',
+      },
+      embedding: {
+        label: '預設 Embedding 模型',
+        description: '新建知識庫時預設選用。既有知識庫不受影響。',
+        none: '空間內沒有可用的 Embedding 模型，無法新建知識庫。',
+      },
+      rerank: {
+        label: '預設 Rerank 模型',
+        description: '未單獨設定重排模型的檢索和內建智慧體使用。',
+        none: '空間內沒有可用的 Rerank 模型，檢索將依召回順序返回。',
+      },
+      vlm: {
+        label: '預設視覺模型',
+        description: '用於圖片理解和多模態解析的預設選擇。',
+        none: '空間內沒有可用的視覺模型，圖片理解不可用。',
+      },
+      asr: {
+        label: '預設語音辨識模型',
+        description: '用於影音轉寫的預設選擇。',
+        none: '空間內沒有可用的語音辨識模型，影音轉寫不可用。',
+      },
+    },
+    hints: {
+      workspace: '使用空間設定。',
+      system: '未設定，目前使用系統預設：{name}',
+      auto: '未設定，目前自動使用第一個可用模型：{name}',
+      followChat: '未設定，跟隨預設對話模型：{name}',
+      staleFallback: '所選模型已刪除或不可用，目前回退到：{name}',
+      staleNone: '所選模型已刪除或不可用，且沒有可回退的模型。',
+    },
+    webSearch: {
+      label: '預設搜尋引擎',
+      description: '未單獨指定搜尋引擎的智慧體開啟聯網搜尋時使用。',
+      unset: '未設定預設搜尋引擎，未單獨指定搜尋引擎的智慧體將無法聯網搜尋。',
+      placeholder: '選擇搜尋引擎',
+    },
+    toasts: {
+      saveSuccess: '預設設定已儲存',
+      saveFailed: '儲存失敗：{message}',
+    },
+  },
   memoryWorkspaceSettings: {
     title: '長期記憶',
     description: '讓助手跨會話記住成員說過的個人資料、偏好、事實與在辦事項。',
@@ -7085,6 +7215,14 @@ export default {
     baseUrlLabel: '實例地址',
     baseUrlPlaceholder: 'https://searxng.example.com',
     apiKeyPlaceholder: '請輸入 API 金鑰',
+    clients: {
+      label: '搜尋與網頁讀取',
+      search: '搜尋',
+      fetch: '網頁讀取',
+      viaApi: '{name} API',
+      local: '內建網頁讀取器',
+      help: '搜尋結果由該引擎回傳；智慧體讀取網頁內文時使用上方的網頁讀取方式。'
+    },
     toasts: {
       providerCreated: '搜尋引擎設定已建立',
       providerUpdated: '搜尋引擎設定已更新',
@@ -7800,6 +7938,9 @@ export default {
       mineruTierAdvanced: 'advanced（VLM，品質最高、最慢）',
       mineruTierHint: '僅 MinerU 4.0 及以上生效；可選檔位取決於伺服器端啟動時的 --tier。',
       mineruLegacySection: '舊版參數（MinerU 3.x 及更早）',
+      mineruEffortLabel: '混合解析精度',
+      mineruEffortDefault: '伺服器預設（medium）',
+      mineruEffortHint: 'high 可在舊版混合解析後端啟用圖片和圖表分析，但耗時更長。',
       mineruLegacySectionHint: 'MinerU 4.0 已移除以下請求參數，連結 4.0 及以上服務時會被忽略；VLM 地址改在 MinerU 伺服器端設定。',
       paddleocrVlEndpointPlaceholder: '如 http://your-paddleocr-vl:8080',
       paddleocrVlEndpointHint: '填寫 PaddleOCR-VL 完整服務（pipeline）地址，無需 /layout-parsing 後綴',
@@ -8471,6 +8612,7 @@ export default {
     channelConfluence: 'Confluence',
     channelYuque: '語雀',
     channelGitLab: 'GitLab',
+    channelNextcloud: 'Nextcloud',
     channelSeafile: 'Seafile',
     channelIma: '騰訊 IMA',
     channelUpload: '上傳',
@@ -8935,6 +9077,11 @@ export default {
       }
     }
   },
+  assistantEntryGuide: {
+    stepOf: 'v0.9.0 新功能',
+    skip: '知道了',
+    interactHint: '點擊反白的入口，開啟助手試試。',
+  },
   newUserGuide: {
     stepOf: '{current} / {total}',
     skip: '跳過引導',
@@ -8943,6 +9090,10 @@ export default {
     done: '完成',
     reopen: '新手引導',
     steps: {
+      assistant: {
+        title: '認識 WeKnora 助手',
+        desc: '可以詢問 WeKnora 的版本、功能與設定，也可以結合目前頁面，以你的身分建立智慧代理、設定定時任務或整理知識。'
+      },
       done: {
         title: '一切就緒',
         desc: '你已經了解了核心功能，現在就開始建構你的知識助手吧！隨時可點擊選單頂部暱稱旁的幫助按鈕重新查看引導。'

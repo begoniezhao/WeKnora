@@ -33256,6 +33256,11 @@ const docTemplate = `{
                     "type": "boolean",
                     "x-agent": "question_generation_enabled"
                 },
+                "model_id": {
+                    "description": "ModelID selects a chat model for questions. Empty inherits the summary model.",
+                    "type": "string",
+                    "x-agent": "question_model_id"
+                },
                 "question_count": {
                     "description": "QuestionCount is how many questions to write per chunk, from 1 to 10.",
                     "type": "integer",
@@ -36485,7 +36490,8 @@ const docTemplate = `{
                 "exa",
                 "metaso",
                 "bocha",
-                "serply"
+                "serply",
+                "deepseek"
             ],
             "x-enum-varnames": [
                 "WebSearchProviderTypeBrave",
@@ -36501,7 +36507,8 @@ const docTemplate = `{
                 "WebSearchProviderTypeExa",
                 "WebSearchProviderTypeMetaso",
                 "WebSearchProviderTypeBocha",
-                "WebSearchProviderTypeSerply"
+                "WebSearchProviderTypeSerply",
+                "WebSearchProviderTypeDeepSeek"
             ]
         },
         "github_com_Tencent_WeKnora_internal_types.WebSearchProviderTypeInfo": {
@@ -36561,6 +36568,12 @@ const docTemplate = `{
         "github_com_Tencent_WeKnora_internal_types.WikiConfig": {
             "type": "object",
             "properties": {
+                "auto_generate": {
+                    "description": "AutoGenerate disables background Wiki generation when false. Omitted means true.\nManual page APIs and Wiki retrieval remain available while Wiki is enabled.",
+                    "type": "boolean",
+                    "default": true,
+                    "x-agent": "wiki_auto_generate"
+                },
                 "content_instructions": {
                     "description": "ContentInstructions sets tone and emphasis for generated Wiki prose. Citations stay fixed.",
                     "type": "string",
@@ -38919,6 +38932,9 @@ const docTemplate = `{
                         },
                         "enabled": {
                             "type": "boolean"
+                        },
+                        "modelId": {
+                            "type": "string"
                         },
                         "questionCount": {
                             "type": "integer"
