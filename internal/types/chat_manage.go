@@ -26,6 +26,10 @@ type PipelineRequest struct {
 	// every search target. Set by the knowledge-search API.
 	DisableVectorMatch   bool `json:"disable_vector_match,omitempty"`
 	DisableKeywordsMatch bool `json:"disable_keywords_match,omitempty"`
+	// ParentSlotAggregation collapses hits that share a ParentChunkID into one
+	// top-k slot, so sibling children of the same parent cannot crowd out other
+	// pages. Set by the knowledge-search API; off by default.
+	ParentSlotAggregation bool `json:"parent_slot_aggregation,omitempty"`
 
 	// QueryImage is set when the caller submits an image to search by
 	// similarity instead of by text. Vector recall then embeds the image with
@@ -325,6 +329,7 @@ func (c *ChatManage) Clone() *ChatManage {
 			VectorDatabase:           c.VectorDatabase,
 			DisableVectorMatch:       c.DisableVectorMatch,
 			DisableKeywordsMatch:     c.DisableKeywordsMatch,
+			ParentSlotAggregation:    c.ParentSlotAggregation,
 			RerankModelID:            c.RerankModelID,
 			RerankTopK:               c.RerankTopK,
 			RerankThreshold:          c.RerankThreshold,
