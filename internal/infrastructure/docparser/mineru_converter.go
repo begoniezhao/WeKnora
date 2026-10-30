@@ -41,6 +41,7 @@ type MinerUReader struct {
 	tier     string // V1 only: flash, basic, standard, advanced; "" = server default
 	// Legacy (<= 3.x) only; MinerU 4.0 dropped these request parameters.
 	backend       string // "pipeline", "vlm-*", "hybrid-*"
+	effort        string // legacy hybrid: medium or high; "" = server default
 	vlmServerURL  string // vLLM server URL for vlm-http-client / hybrid-http-client
 	formulaEnable bool
 	tableEnable   bool
@@ -63,6 +64,7 @@ func NewMinerUReader(overrides map[string]string) *MinerUReader {
 		apiKey:        strings.TrimSpace(overrides["mineru_server_api_key"]),
 		tier:          resolveMinerUTier(overrides["mineru_tier"]),
 		backend:       stringOr(overrides["mineru_model"], "pipeline"),
+		effort:        resolveMinerUEffort(overrides["mineru_effort"]),
 		vlmServerURL:  overrides["mineru_vlm_server_url"],
 		formulaEnable: parseBoolOr(overrides["mineru_enable_formula"], true),
 		tableEnable:   parseBoolOr(overrides["mineru_enable_table"], true),
@@ -80,6 +82,15 @@ func resolveMinerUTier(raw string) string {
 		return tier
 	}
 	return ""
+}
+
+func resolveMinerUEffort(raw string) string {
+	switch effort := strings.ToLower(strings.TrimSpace(raw)); effort {
+	case "medium", "high":
+		return effort
+	default:
+		return ""
+	}
 }
 
 func (c *MinerUReader) Read(ctx context.Context, req *types.ReadRequest) (*types.ReadResult, error) {
@@ -286,6 +297,9 @@ func (c *MinerUReader) callFileParse(
 	}
 	if c.language != "" {
 		fields["lang_list"] = c.language
+	}
+	if c.effort != "" && strings.HasPrefix(c.backend, "hybrid-") {
+		fields["effort"] = c.effort
 	}
 	if c.vlmServerURL != "" && (strings.HasPrefix(c.backend, "vlm-http-client") || strings.HasPrefix(c.backend, "hybrid-http-client")) {
 		fields["server_url"] = c.vlmServerURL
