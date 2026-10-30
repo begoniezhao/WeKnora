@@ -2,6 +2,8 @@ import { get, post, put, del, postUpload, getDown } from "../../utils/request";
 import type { KnowledgeProcessOverrides } from '@/types/knowledgeProcess';
 import type { AuditLog, AuditOutcome, ListAuditLogResponse } from '@/api/tenant/audit-log';
 import { buildListKnowledgeFilesQuery } from './knowledgeFileListQuery';
+import { withKnowledgeReadContext, type KnowledgeReadOptions } from './knowledgeReadOptions';
+export type { KnowledgeReadOptions } from './knowledgeReadOptions';
 
 export { buildListKnowledgeFilesQuery } from './knowledgeFileListQuery';
 
@@ -564,8 +566,8 @@ export interface ListKnowledgeFilesParams {
   folder_recursive?: boolean;
 }
 
-export function listKnowledgeFiles(kbId: string, params: ListKnowledgeFilesParams) {
-  return get(`/api/v1/knowledge-bases/${kbId}/knowledge?${buildListKnowledgeFilesQuery(params)}`);
+export function listKnowledgeFiles(kbId: string, params: ListKnowledgeFilesParams, options?: KnowledgeReadOptions) {
+  return get(withKnowledgeReadContext(`/api/v1/knowledge-bases/${kbId}/knowledge?${buildListKnowledgeFilesQuery(params)}`, options), { signal: options?.signal });
 }
 
 /** One node of the knowledge base folder tree. */
@@ -589,8 +591,8 @@ export interface KnowledgeFolderTree {
   folders: KnowledgeFolderNode[];
 }
 
-export function listKnowledgeFolders(kbId: string) {
-  return get(`/api/v1/knowledge-bases/${kbId}/knowledge/folders`);
+export function listKnowledgeFolders(kbId: string, options?: KnowledgeReadOptions) {
+  return get(withKnowledgeReadContext(`/api/v1/knowledge-bases/${kbId}/knowledge/folders`, options), { signal: options?.signal });
 }
 
 /**
